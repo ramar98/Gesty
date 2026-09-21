@@ -101,7 +101,9 @@ const obtenerVentaPorId = async (
 
       WHERE
         vd.venta_id = ?
+        AND vd.empresa_id = ?
         AND v.empresa_id = ?
+        AND pv.empresa_id = ?
         AND p.empresa_id = ?
 
       ORDER BY
@@ -113,11 +115,14 @@ const obtenerVentaPorId = async (
       id,
       empresaId,
       empresaId,
+      empresaId,
+      empresaId,
     ],
   );
 
   return {
     ...ventas[0],
+
     productos:
       detalles,
   };
@@ -224,6 +229,7 @@ const obtenerVentas = async ({
 
         LEFT JOIN ventas_detalle vd
           ON vd.venta_id = v.id
+         AND vd.empresa_id = v.empresa_id
 
         ${where}
 
@@ -296,10 +302,6 @@ const crearVenta =
         throw error;
       }
 
-      /*
-       * CLIENTE
-       */
-
       if (cliente_id) {
         const [clientes] =
           await connection.query(
@@ -336,10 +338,6 @@ const crearVenta =
           throw error;
         }
       }
-
-      /*
-       * USUARIO
-       */
 
       if (usuario_id) {
         const [usuarios] =
@@ -384,10 +382,6 @@ const crearVenta =
       const productosProcesados =
         [];
 
-      /*
-       * VARIANTES
-       */
-
       for (
         const item
         of productos
@@ -425,6 +419,7 @@ const crearVenta =
 
               WHERE
                 pv.id = ?
+                AND pv.empresa_id = ?
                 AND p.empresa_id = ?
                 AND p.activo = TRUE
 
@@ -432,6 +427,7 @@ const crearVenta =
             `,
             [
               varianteId,
+              empresaId,
               empresaId,
             ],
           );
@@ -457,7 +453,7 @@ const crearVenta =
         const stockAnterior =
           Number(
             variante.stock_actual ??
-              0,
+            0,
           );
 
         if (
@@ -489,7 +485,7 @@ const crearVenta =
             ? precioUnitario
             : Number(
                 variante.precio_venta ??
-                  0,
+                0,
               );
 
         const subtotal =
@@ -534,10 +530,6 @@ const crearVenta =
           0,
         );
 
-      /*
-       * INSERT VENTA
-       */
-
       const [ventaResult] =
         await connection.query(
           `
@@ -578,10 +570,6 @@ const crearVenta =
       const ventaId =
         ventaResult.insertId;
 
-      /*
-       * DETALLE + STOCK
-       */
-
       for (
         const item
         of productosProcesados
@@ -590,6 +578,7 @@ const crearVenta =
           `
             INSERT INTO ventas_detalle
             (
+              empresa_id,
               venta_id,
               variante_id,
               cantidad,
@@ -602,10 +591,12 @@ const crearVenta =
               ?,
               ?,
               ?,
+              ?,
               ?
             )
           `,
           [
+            empresaId,
             ventaId,
             item.varianteId,
             item.cantidad,
@@ -624,6 +615,7 @@ const crearVenta =
 
               WHERE
                 pv.id = ?
+                AND pv.empresa_id = ?
 
                 AND EXISTS (
                   SELECT 1
@@ -639,6 +631,7 @@ const crearVenta =
             [
               item.stockNuevo,
               item.varianteId,
+              empresaId,
               empresaId,
             ],
           );
@@ -658,14 +651,11 @@ const crearVenta =
           throw error;
         }
 
-        /*
-         * MOVIMIENTO DE STOCK
-         */
-
         await connection.query(
           `
             INSERT INTO movimientos_stock
             (
+              empresa_id,
               variante_id,
               tipo,
               cantidad,
@@ -684,10 +674,12 @@ const crearVenta =
               ?,
               ?,
               ?,
+              ?,
               ?
             )
           `,
           [
+            empresaId,
             item.varianteId,
             "VENTA",
             item.cantidad,
@@ -798,10 +790,6 @@ const anularVenta = async ({
       throw error;
     }
 
-    /*
-     * BLOQUEAR VENTA
-     */
-
     const [ventas] =
       await connection.query(
         `
@@ -879,10 +867,6 @@ const anularVenta = async ({
       throw error;
     }
 
-    /*
-     * VALIDAR USUARIO
-     */
-
     const [usuarios] =
       await connection.query(
         `
@@ -919,10 +903,6 @@ const anularVenta = async ({
       throw error;
     }
 
-    /*
-     * DETALLE DE VENTA
-     */
-
     const [detalles] =
       await connection.query(
         `
@@ -945,6 +925,8 @@ const anularVenta = async ({
 
           WHERE
             vd.venta_id = ?
+            AND vd.empresa_id = ?
+            AND pv.empresa_id = ?
             AND p.empresa_id = ?
 
           ORDER BY
@@ -954,6 +936,8 @@ const anularVenta = async ({
         `,
         [
           ventaId,
+          empresaIdNormalizado,
+          empresaIdNormalizado,
           empresaIdNormalizado,
         ],
       );
@@ -972,10 +956,6 @@ const anularVenta = async ({
 
       throw error;
     }
-
-    /*
-     * DEVOLVER STOCK
-     */
 
     for (
       const detalle
@@ -1028,6 +1008,7 @@ const anularVenta = async ({
 
             WHERE
               pv.id = ?
+              AND pv.empresa_id = ?
 
               AND EXISTS (
                 SELECT 1
@@ -1042,6 +1023,7 @@ const anularVenta = async ({
           [
             stockNuevo,
             varianteId,
+            empresaIdNormalizado,
             empresaIdNormalizado,
           ],
         );
@@ -1061,14 +1043,11 @@ const anularVenta = async ({
         throw error;
       }
 
-      /*
-       * MOVIMIENTO DE STOCK
-       */
-
       await connection.query(
         `
           INSERT INTO movimientos_stock
           (
+            empresa_id,
             variante_id,
             tipo,
             cantidad,
@@ -1087,10 +1066,12 @@ const anularVenta = async ({
             ?,
             ?,
             ?,
+            ?,
             ?
           )
         `,
         [
+          empresaIdNormalizado,
           varianteId,
           "ANULACION_VENTA",
           cantidad,
@@ -1102,10 +1083,6 @@ const anularVenta = async ({
         ],
       );
     }
-
-    /*
-     * MARCAR VENTA ANULADA
-     */
 
     const [resultadoVenta] =
       await connection.query(

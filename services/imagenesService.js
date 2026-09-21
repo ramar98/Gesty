@@ -287,20 +287,23 @@ const guardarImagen =
       const [result] =
         await connection.query(
           `
-            INSERT INTO producto_imagenes
-            (
-              producto_id,
-              ruta,
-              principal
-            )
+      INSERT INTO producto_imagenes
+      (
+        empresa_id,
+        producto_id,
+        ruta,
+        principal
+      )
 
-            VALUES (
-              ?,
-              ?,
-              ?
-            )
-          `,
+      VALUES (
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `,
           [
+            empresaId,
             producto_id,
             rutaNormalizada,
             debeSerPrincipal,
@@ -342,7 +345,7 @@ const guardarImagen =
           );
         }
       } catch (
-        errorArchivo
+      errorArchivo
       ) {
         console.error(
           "No se pudo eliminar el archivo de una carga fallida:",
@@ -619,7 +622,7 @@ const eliminarImagen =
           );
         }
       } catch (
-        errorArchivo
+      errorArchivo
       ) {
         console.error(
           "No se pudo eliminar el archivo físico:",

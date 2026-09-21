@@ -421,30 +421,33 @@ const crearVariante = async (
     const [result] =
       await connection.query(
         `
-          INSERT INTO producto_variantes
-          (
-            producto_id,
-            color_id,
-            talle_id,
-            codigo_barras,
-            precio_costo,
-            precio_venta,
-            stock_actual,
-            stock_minimo
-          )
+      INSERT INTO producto_variantes
+      (
+        empresa_id,
+        producto_id,
+        color_id,
+        talle_id,
+        codigo_barras,
+        precio_costo,
+        precio_venta,
+        stock_actual,
+        stock_minimo
+      )
 
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
-        `,
+      VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `,
         [
+          empresaId,
           producto_id,
           color_id,
           talle_id,
@@ -468,28 +471,31 @@ const crearVariante = async (
     ) {
       await connection.query(
         `
-          INSERT INTO movimientos_stock
-          (
-            variante_id,
-            tipo,
-            cantidad,
-            stock_anterior,
-            stock_nuevo,
-            referencia,
-            observacion
-          )
+      INSERT INTO movimientos_stock
+      (
+        empresa_id,
+        variante_id,
+        tipo,
+        cantidad,
+        stock_anterior,
+        stock_nuevo,
+        referencia,
+        observacion
+      )
 
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
-        `,
+      VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `,
         [
+          empresaId,
           varianteId,
           "AJUSTE",
           Number(

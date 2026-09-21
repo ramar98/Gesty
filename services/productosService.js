@@ -718,19 +718,12 @@ const obtenerProductoPorId =
 
 async function crearVarianteInterna(
   connection,
+  empresaId,
   productoId,
   precioCosto,
   precioVenta,
   stockInicial = 0,
 ) {
-  /*
-   * Seguridad adicional.
-   *
-   * El controller ya valida este valor,
-   * pero el service también se protege
-   * ante llamadas internas incorrectas.
-   */
-
   const stock =
     Number(
       stockInicial ?? 0,
@@ -756,6 +749,7 @@ async function crearVarianteInterna(
       `
         INSERT INTO producto_variantes
         (
+          empresa_id,
           producto_id,
           color_id,
           talle_id,
@@ -768,6 +762,7 @@ async function crearVarianteInterna(
 
         VALUES (
           ?,
+          ?,
           NULL,
           NULL,
           NULL,
@@ -778,6 +773,7 @@ async function crearVarianteInterna(
         )
       `,
       [
+        empresaId,
         productoId,
         precioCosto,
         precioVenta,
@@ -1031,6 +1027,7 @@ const crearProducto =
       ) {
         await crearVarianteInterna(
           connection,
+          empresaId,
           productoId,
           precio_costo_default,
           precio_venta_default,
@@ -1308,6 +1305,7 @@ const actualizarProducto =
         ) {
           await crearVarianteInterna(
             connection,
+            empresaId,
             id,
             precio_costo_default,
             precio_venta_default,

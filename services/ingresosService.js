@@ -63,14 +63,6 @@ const obtenerIngresoPorId =
       return null;
     }
 
-    /*
-     * Detalles del ingreso.
-     *
-     * ingresos_detalle no tiene empresa_id,
-     * por eso verificamos empresa mediante
-     * ingresos y productos.
-     */
-
     const [detalles] =
       await db.query(
         `
@@ -119,7 +111,9 @@ const obtenerIngresoPorId =
 
           WHERE
             idet.ingreso_id = ?
+            AND idet.empresa_id = ?
             AND i.empresa_id = ?
+            AND pv.empresa_id = ?
             AND p.empresa_id = ?
 
           ORDER BY
@@ -129,6 +123,8 @@ const obtenerIngresoPorId =
         `,
         [
           id,
+          empresaId,
+          empresaId,
           empresaId,
           empresaId,
         ],
@@ -186,11 +182,6 @@ const obtenerIngresos =
     fechaHasta = null,
     proveedorId = null,
   } = {}) => {
-    /*
-     * La empresa SIEMPRE es condición
-     * obligatoria.
-     */
-
     const condiciones = [
       "i.empresa_id = ?",
     ];
@@ -282,6 +273,8 @@ const obtenerIngresos =
           LEFT JOIN ingresos_detalle idet
             ON idet.ingreso_id =
               i.id
+           AND idet.empresa_id =
+              i.empresa_id
 
           ${where}
 
@@ -362,12 +355,6 @@ const crearIngreso =
     try {
       await connection.beginTransaction();
 
-      /*
-       * =================================
-       * VALIDAR EMPRESA
-       * =================================
-       */
-
       if (
         !Number.isInteger(
           empresaId,
@@ -384,12 +371,6 @@ const crearIngreso =
 
         throw error;
       }
-
-      /*
-       * =================================
-       * VALIDAR USUARIO
-       * =================================
-       */
 
       if (!usuario_id) {
         const error =
@@ -439,31 +420,26 @@ const crearIngreso =
         throw error;
       }
 
-      /*
-       * =================================
-       * VALIDAR PROVEEDOR
-       * =================================
-       */
-
       const [proveedores] =
         await connection.query(
           `
-      SELECT
-        id
+            SELECT
+              id
 
-      FROM proveedores
+            FROM proveedores
 
-      WHERE
-        id = ?
-        AND empresa_id = ?
+            WHERE
+              id = ?
+              AND empresa_id = ?
 
-      LIMIT 1
-    `,
+            LIMIT 1
+          `,
           [
             proveedor_id,
             empresaId,
           ],
         );
+
       if (
         proveedores.length ===
         0
@@ -484,12 +460,6 @@ const crearIngreso =
 
       const productosProcesados =
         [];
-
-      /*
-       * =================================
-       * VALIDAR VARIANTES
-       * =================================
-       */
 
       for (
         const item of productos
@@ -527,6 +497,7 @@ const crearIngreso =
 
               WHERE
                 pv.id = ?
+                AND pv.empresa_id = ?
                 AND p.empresa_id = ?
                 AND p.activo = TRUE
 
@@ -535,14 +506,9 @@ const crearIngreso =
             [
               varianteId,
               empresaId,
+              empresaId,
             ],
           );
-
-        /*
-         * Si la variante existe pero pertenece
-         * a otra empresa, respondemos como si
-         * no existiera.
-         */
 
         if (
           variantes.length ===
@@ -602,12 +568,6 @@ const crearIngreso =
         );
       }
 
-      /*
-       * =================================
-       * CREAR INGRESO
-       * =================================
-       */
-
       const [ingresoResult] =
         await connection.query(
           `
@@ -646,23 +606,14 @@ const crearIngreso =
       const ingresoId =
         ingresoResult.insertId;
 
-      /*
-       * =================================
-       * DETALLE + STOCK + MOVIMIENTOS
-       * =================================
-       */
-
       for (
         const item of productosProcesados
       ) {
-        /*
-         * Detalle
-         */
-
         await connection.query(
           `
             INSERT INTO ingresos_detalle
             (
+              empresa_id,
               ingreso_id,
               variante_id,
               cantidad,
@@ -675,10 +626,12 @@ const crearIngreso =
               ?,
               ?,
               ?,
+              ?,
               ?
             )
           `,
           [
+            empresaId,
             ingresoId,
             item.varianteId,
             item.cantidad,
@@ -686,14 +639,6 @@ const crearIngreso =
             item.subtotal,
           ],
         );
-
-        /*
-         * Actualizar stock.
-         *
-         * Como producto_variantes no tiene
-         * empresa_id, usamos EXISTS contra
-         * productos.
-         */
 
         const [stockResult] =
           await connection.query(
@@ -706,6 +651,7 @@ const crearIngreso =
 
               WHERE
                 pv.id = ?
+                AND pv.empresa_id = ?
 
                 AND EXISTS (
                   SELECT 1
@@ -726,6 +672,7 @@ const crearIngreso =
               item.precioCosto,
               item.varianteId,
               empresaId,
+              empresaId,
             ],
           );
 
@@ -744,10 +691,6 @@ const crearIngreso =
           throw error;
         }
 
-        /*
-         * Movimiento de stock
-         */
-
         const referencia =
           `Ingreso #${ingresoId}`;
 
@@ -756,17 +699,11 @@ const crearIngreso =
             ? `Comprobante: ${numero_comprobante}`
             : observaciones;
 
-        /*
-         * movimientos_stock no tiene empresa_id.
-         *
-         * La pertenencia queda determinada por
-         * variante -> producto -> empresa.
-         */
-
         await connection.query(
           `
             INSERT INTO movimientos_stock
             (
+              empresa_id,
               variante_id,
               tipo,
               cantidad,
@@ -785,10 +722,12 @@ const crearIngreso =
               ?,
               ?,
               ?,
+              ?,
               ?
             )
           `,
           [
+            empresaId,
             item.varianteId,
             "INGRESO",
             item.cantidad,
