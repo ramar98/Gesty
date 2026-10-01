@@ -125,9 +125,9 @@ function validarProductos(
 
       if (
         item.precio_unitario ===
-          undefined ||
+        undefined ||
         item.precio_unitario ===
-          "" ||
+        "" ||
         Number.isNaN(
           precioUnitario,
         ) ||
@@ -169,9 +169,9 @@ function validarVenta(
 
   if (
     body.cliente_id !==
-      undefined &&
+    undefined &&
     body.cliente_id !==
-      null &&
+    null &&
     body.cliente_id !== ""
   ) {
     clienteId =
@@ -248,23 +248,23 @@ function validarVenta(
           body.productos,
         )
           ? body.productos.map(
-              (item) => ({
-                variante_id:
-                  Number(
-                    item.variante_id,
-                  ),
+            (item) => ({
+              variante_id:
+                Number(
+                  item.variante_id,
+                ),
 
-                cantidad:
-                  Number(
-                    item.cantidad,
-                  ),
+              cantidad:
+                Number(
+                  item.cantidad,
+                ),
 
-                precio_unitario:
-                  Number(
-                    item.precio_unitario,
-                  ),
-              }),
-            )
+              precio_unitario:
+                Number(
+                  item.precio_unitario,
+                ),
+            }),
+          )
           : [],
     },
   };
@@ -433,11 +433,11 @@ function responderError(
 
   if (
     error.code ===
-      "VENTA_NO_ANULABLE" ||
+    "VENTA_NO_ANULABLE" ||
     error.code ===
-      "VENTA_SIN_DETALLE" ||
+    "VENTA_SIN_DETALLE" ||
     error.code ===
-      "CANTIDAD_VENTA_INVALIDA"
+    "CANTIDAD_VENTA_INVALIDA"
   ) {
     return res
       .status(409)
@@ -446,6 +446,44 @@ function responderError(
 
         message:
           error.message,
+
+        error: {
+          code:
+            error.code,
+        },
+      });
+  }
+
+  if (
+    error.code ===
+    "CAJA_CERRADA"
+  ) {
+    return res
+      .status(409)
+      .json({
+        success: false,
+
+        message:
+          "No hay una caja abierta. Abrí la caja antes de registrar una venta.",
+
+        error: {
+          code:
+            error.code,
+        },
+      });
+  }
+
+  if (
+    error.code ===
+    "CAJA_NO_ENCONTRADA"
+  ) {
+    return res
+      .status(404)
+      .json({
+        success: false,
+
+        message:
+          "No se encontró una caja activa para la empresa.",
 
         error: {
           code:
@@ -469,14 +507,14 @@ function responderError(
 
       error:
         process.env.NODE_ENV ===
-        "development"
+          "development"
           ? {
-              code:
-                error.code,
+            code:
+              error.code,
 
-              detail:
-                error.message,
-            }
+            detail:
+              error.message,
+          }
           : undefined,
     });
 }
@@ -503,16 +541,16 @@ exports.obtenerVentas =
 
     const {
       fecha_desde:
-        fechaDesde = null,
+      fechaDesde = null,
 
       fecha_hasta:
-        fechaHasta = null,
+      fechaHasta = null,
 
       cliente_id:
-        clienteIdRaw = null,
+      clienteIdRaw = null,
 
       metodo_pago:
-        metodoPagoRaw = null,
+      metodoPagoRaw = null,
     } = req.query;
 
     if (
@@ -551,7 +589,7 @@ exports.obtenerVentas =
       fechaDesde &&
       fechaHasta &&
       fechaDesde >
-        fechaHasta
+      fechaHasta
     ) {
       return res
         .status(400)
@@ -588,10 +626,10 @@ exports.obtenerVentas =
     const metodoPago =
       metodoPagoRaw
         ? String(
-            metodoPagoRaw,
-          )
-            .trim()
-            .toUpperCase()
+          metodoPagoRaw,
+        )
+          .trim()
+          .toUpperCase()
         : null;
 
     if (
@@ -857,7 +895,7 @@ exports.anularVenta =
     const usuarioId =
       convertirId(
         req.usuario?.id ??
-          req.usuarioId,
+        req.usuarioId,
       );
 
     if (!usuarioId) {
@@ -879,7 +917,7 @@ exports.anularVenta =
     const motivo =
       String(
         req.body?.motivo ??
-          "",
+        "",
       ).trim();
 
     if (!motivo) {

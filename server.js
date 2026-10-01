@@ -77,6 +77,11 @@ const usuariosRoutes = require(
   "./routes/usuariosRoutes",
 );
 
+const cajaRoutes =
+  require(
+    "./routes/cajaRoutes",
+  );
+
 // =======================
 // AUTENTICACIÓN
 // =======================
@@ -346,6 +351,15 @@ app.use(
 app.use(
   "/api/usuarios",
   usuariosRoutes,
+);
+
+
+/* ============================
+ * USUARIOS
+ * ============================*/
+app.use(
+  "/api/caja",
+  cajaRoutes,
 );
 
 /*

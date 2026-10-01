@@ -1,124 +1,135 @@
 const db = require("../config/db");
+const cajaService = require("./cajaService");
+
+/*
+ * =====================================
+ * OBTENER VENTA POR ID
+ * =====================================
+ */
 
 const obtenerVentaPorId = async (
   id,
   empresaId,
 ) => {
-  const [ventas] = await db.query(
-    `
-      SELECT
-        v.id,
-        v.empresa_id,
-        v.cliente_id,
-        v.fecha,
-        v.subtotal,
-        v.descuento,
-        v.total,
-        v.metodo_pago,
-        v.usuario_id,
-        v.estado,
-        v.anulada_at,
-        v.anulada_por,
-        v.motivo_anulacion,
+  const [ventas] =
+    await db.query(
+      `
+        SELECT
+          v.id,
+          v.empresa_id,
+          v.cliente_id,
+          v.fecha,
+          v.subtotal,
+          v.descuento,
+          v.total,
+          v.metodo_pago,
+          v.usuario_id,
+          v.estado,
+          v.anulada_at,
+          v.anulada_por,
+          v.motivo_anulacion,
 
-        c.nombre AS cliente,
-        c.telefono AS cliente_telefono,
-        c.email AS cliente_email,
+          c.nombre AS cliente,
+          c.telefono AS cliente_telefono,
+          c.email AS cliente_email,
 
-        u.nombre AS usuario_nombre,
-        u.apellido AS usuario_apellido,
+          u.nombre AS usuario_nombre,
+          u.apellido AS usuario_apellido,
 
-        ua.nombre AS anulada_por_nombre,
-        ua.apellido AS anulada_por_apellido
+          ua.nombre AS anulada_por_nombre,
+          ua.apellido AS anulada_por_apellido
 
-      FROM ventas v
+        FROM ventas v
 
-      LEFT JOIN clientes c
-        ON c.id = v.cliente_id
-       AND c.empresa_id = v.empresa_id
+        LEFT JOIN clientes c
+          ON c.id = v.cliente_id
+          AND c.empresa_id = v.empresa_id
 
-      LEFT JOIN usuarios u
-        ON u.id = v.usuario_id
-       AND u.empresa_id = v.empresa_id
+        LEFT JOIN usuarios u
+          ON u.id = v.usuario_id
+          AND u.empresa_id = v.empresa_id
 
-      LEFT JOIN usuarios ua
-        ON ua.id = v.anulada_por
-       AND ua.empresa_id = v.empresa_id
+        LEFT JOIN usuarios ua
+          ON ua.id = v.anulada_por
+          AND ua.empresa_id = v.empresa_id
 
-      WHERE
-        v.id = ?
-        AND v.empresa_id = ?
+        WHERE
+          v.id = ?
+          AND v.empresa_id = ?
 
-      LIMIT 1
-    `,
-    [
-      id,
-      empresaId,
-    ],
-  );
+        LIMIT 1
+      `,
+      [
+        id,
+        empresaId,
+      ],
+    );
 
-  if (ventas.length === 0) {
+  if (
+    ventas.length === 0
+  ) {
     return null;
   }
 
-  const [detalles] = await db.query(
-    `
-      SELECT
-        vd.id,
-        vd.venta_id,
-        vd.variante_id,
-        vd.cantidad,
-        vd.precio_unitario,
-        vd.subtotal,
+  const [detalles] =
+    await db.query(
+      `
+        SELECT
+          vd.id,
+          vd.venta_id,
+          vd.variante_id,
+          vd.cantidad,
+          vd.precio_unitario,
+          vd.subtotal,
 
-        pv.producto_id,
-        pv.codigo_barras,
+          pv.producto_id,
+          pv.codigo_barras,
 
-        p.codigo AS producto_codigo,
-        p.nombre AS producto_nombre,
+          p.codigo AS producto_codigo,
+          p.nombre AS producto_nombre,
 
-        c.nombre AS color,
-        t.nombre AS talle
+          c.nombre AS color,
+          t.nombre AS talle
 
-      FROM ventas_detalle vd
+        FROM ventas_detalle vd
 
-      INNER JOIN ventas v
-        ON v.id = vd.venta_id
+        INNER JOIN ventas v
+          ON v.id = vd.venta_id
 
-      INNER JOIN producto_variantes pv
-        ON pv.id = vd.variante_id
+        INNER JOIN producto_variantes pv
+          ON pv.id = vd.variante_id
 
-      INNER JOIN productos p
-        ON p.id = pv.producto_id
+        INNER JOIN productos p
+          ON p.id = pv.producto_id
 
-      LEFT JOIN colores c
-        ON c.id = pv.color_id
-       AND c.empresa_id = p.empresa_id
+        LEFT JOIN colores c
+          ON c.id = pv.color_id
+          AND c.empresa_id = p.empresa_id
 
-      LEFT JOIN talles t
-        ON t.id = pv.talle_id
-       AND t.empresa_id = p.empresa_id
+        LEFT JOIN talles t
+          ON t.id = pv.talle_id
+          AND t.empresa_id = p.empresa_id
 
-      WHERE
-        vd.venta_id = ?
-        AND vd.empresa_id = ?
-        AND v.empresa_id = ?
-        AND pv.empresa_id = ?
-        AND p.empresa_id = ?
+        WHERE
+          vd.venta_id = ?
+          AND vd.empresa_id = ?
+          AND v.empresa_id = ?
+          AND pv.empresa_id = ?
+          AND p.empresa_id = ?
 
-      ORDER BY
-        p.nombre ASC,
-        c.nombre ASC,
-        t.nombre ASC
-    `,
-    [
-      id,
-      empresaId,
-      empresaId,
-      empresaId,
-      empresaId,
-    ],
-  );
+        ORDER BY
+          p.nombre ASC,
+          c.nombre ASC,
+          t.nombre ASC
+      `,
+      [
+        id,
+        empresaId,
+        empresaId,
+        empresaId,
+        empresaId,
+      ],
+    );
 
   return {
     ...ventas[0],
@@ -127,6 +138,12 @@ const obtenerVentaPorId = async (
       detalles,
   };
 };
+
+/*
+ * =====================================
+ * OBTENER VENTAS
+ * =====================================
+ */
 
 const obtenerVentas = async ({
   empresaId,
@@ -184,7 +201,9 @@ const obtenerVentas = async ({
   }
 
   const where = `
-    WHERE ${condiciones.join(" AND ")}
+    WHERE ${condiciones.join(
+      " AND ",
+    )}
   `;
 
   const [rows] =
@@ -221,15 +240,15 @@ const obtenerVentas = async ({
 
         LEFT JOIN clientes c
           ON c.id = v.cliente_id
-         AND c.empresa_id = v.empresa_id
+          AND c.empresa_id = v.empresa_id
 
         LEFT JOIN usuarios u
           ON u.id = v.usuario_id
-         AND u.empresa_id = v.empresa_id
+          AND u.empresa_id = v.empresa_id
 
         LEFT JOIN ventas_detalle vd
           ON vd.venta_id = v.id
-         AND vd.empresa_id = v.empresa_id
+          AND vd.empresa_id = v.empresa_id
 
         ${where}
 
@@ -261,6 +280,12 @@ const obtenerVentas = async ({
   return rows;
 };
 
+/*
+ * =====================================
+ * CREAR VENTA
+ * =====================================
+ */
+
 const crearVenta =
   async (
     data,
@@ -285,6 +310,12 @@ const crearVenta =
     try {
       await connection.beginTransaction();
 
+      /*
+       * =================================
+       * EMPRESA
+       * =================================
+       */
+
       if (
         !Number.isInteger(
           empresaId,
@@ -301,6 +332,12 @@ const crearVenta =
 
         throw error;
       }
+
+      /*
+       * =================================
+       * CLIENTE
+       * =================================
+       */
 
       if (cliente_id) {
         const [clientes] =
@@ -338,6 +375,12 @@ const crearVenta =
           throw error;
         }
       }
+
+      /*
+       * =================================
+       * USUARIO
+       * =================================
+       */
 
       if (usuario_id) {
         const [usuarios] =
@@ -382,6 +425,12 @@ const crearVenta =
       const productosProcesados =
         [];
 
+      /*
+       * =================================
+       * VALIDAR VARIANTES
+       * =================================
+       */
+
       for (
         const item
         of productos
@@ -415,7 +464,8 @@ const crearVenta =
               FROM producto_variantes pv
 
               INNER JOIN productos p
-                ON p.id = pv.producto_id
+                ON p.id =
+                  pv.producto_id
 
               WHERE
                 pv.id = ?
@@ -453,7 +503,7 @@ const crearVenta =
         const stockAnterior =
           Number(
             variante.stock_actual ??
-            0,
+              0,
           );
 
         if (
@@ -485,7 +535,7 @@ const crearVenta =
             ? precioUnitario
             : Number(
                 variante.precio_venta ??
-                0,
+                  0,
               );
 
         const subtotal =
@@ -518,6 +568,12 @@ const crearVenta =
         });
       }
 
+      /*
+       * =================================
+       * TOTALES
+       * =================================
+       */
+
       const descuentoNormalizado =
         Number(
           descuento ?? 0,
@@ -529,6 +585,12 @@ const crearVenta =
             descuentoNormalizado,
           0,
         );
+
+      /*
+       * =================================
+       * INSERT VENTA
+       * =================================
+       */
 
       const [ventaResult] =
         await connection.query(
@@ -570,10 +632,20 @@ const crearVenta =
       const ventaId =
         ventaResult.insertId;
 
+      /*
+       * =================================
+       * DETALLE + STOCK
+       * =================================
+       */
+
       for (
         const item
         of productosProcesados
       ) {
+        /*
+         * DETALLE
+         */
+
         await connection.query(
           `
             INSERT INTO ventas_detalle
@@ -605,6 +677,10 @@ const crearVenta =
           ],
         );
 
+        /*
+         * STOCK
+         */
+
         const [stockResult] =
           await connection.query(
             `
@@ -623,8 +699,11 @@ const crearVenta =
                   FROM productos p
 
                   WHERE
-                    p.id = pv.producto_id
+                    p.id =
+                      pv.producto_id
+
                     AND p.empresa_id = ?
+
                     AND p.activo = TRUE
                 )
             `,
@@ -650,6 +729,10 @@ const crearVenta =
 
           throw error;
         }
+
+        /*
+         * MOVIMIENTO DE STOCK
+         */
 
         await connection.query(
           `
@@ -692,6 +775,60 @@ const crearVenta =
         );
       }
 
+      /*
+       * =================================
+       * MOVIMIENTO DE CAJA
+       * =================================
+       *
+       * IMPORTANTE:
+       *
+       * Se usa la misma conexión.
+       *
+       * Venta + stock + caja forman parte
+       * de la misma transacción.
+       *
+       * Si no existe una caja abierta,
+       * cajaService devuelve CAJA_CERRADA
+       * y se revierte toda la venta.
+       */
+
+      if (
+        Number.isFinite(
+          totalVenta,
+        ) &&
+        totalVenta > 0
+      ) {
+        await cajaService
+          .registrarMovimiento({
+            connection,
+
+            empresaId,
+
+            usuarioId:
+              usuario_id,
+
+            tipo:
+              "VENTA",
+
+            medioPago:
+              metodo_pago,
+
+            monto:
+              totalVenta,
+
+            descripcion:
+              `Venta #${ventaId}`,
+
+            ventaId,
+          });
+      }
+
+      /*
+       * =================================
+       * COMMIT
+       * =================================
+       */
+
       await connection.commit();
 
       return await obtenerVentaPorId(
@@ -707,442 +844,588 @@ const crearVenta =
     }
   };
 
-const anularVenta = async ({
-  id,
-  empresaId,
-  usuarioId,
-  motivo,
-}) => {
-  const ventaId =
-    Number(id);
+/*
+ * =====================================
+ * ANULAR VENTA
+ * =====================================
+ */
 
-  const empresaIdNormalizado =
-    Number(
-      empresaId,
-    );
-
-  const usuarioIdNormalizado =
-    Number(
-      usuarioId,
-    );
-
-  const motivoNormalizado =
-    String(
-      motivo ?? "",
-    ).trim();
-
-  const connection =
-    await db.getConnection();
-
-  try {
-    await connection.beginTransaction();
-
-    if (
-      !Number.isInteger(
-        empresaIdNormalizado,
-      ) ||
-      empresaIdNormalizado <=
-        0
-    ) {
-      const error =
-        new Error(
-          "No se pudo identificar la empresa.",
-        );
-
-      error.code =
-        "EMPRESA_NO_ASIGNADA";
-
-      throw error;
-    }
-
-    if (
-      !Number.isInteger(
-        ventaId,
-      ) ||
-      ventaId <= 0
-    ) {
-      const error =
-        new Error(
-          "La venta no es válida.",
-        );
-
-      error.code =
-        "VENTA_NO_ENCONTRADA";
-
-      throw error;
-    }
-
-    if (
-      !Number.isInteger(
-        usuarioIdNormalizado,
-      ) ||
-      usuarioIdNormalizado <=
-        0
-    ) {
-      const error =
-        new Error(
-          "No se pudo identificar al usuario.",
-        );
-
-      error.code =
-        "USUARIO_NO_ENCONTRADO";
-
-      throw error;
-    }
-
-    const [ventas] =
-      await connection.query(
-        `
-          SELECT
-            id,
-            empresa_id,
-            estado
-
-          FROM ventas
-
-          WHERE
-            id = ?
-            AND empresa_id = ?
-
-          LIMIT 1
-
-          FOR UPDATE
-        `,
-        [
-          ventaId,
-          empresaIdNormalizado,
-        ],
+const anularVenta =
+  async ({
+    id,
+    empresaId,
+    usuarioId,
+    motivo,
+  }) => {
+    const ventaId =
+      Number(
+        id,
       );
 
-    if (
-      ventas.length ===
-      0
-    ) {
-      const error =
-        new Error(
-          "Venta no encontrada.",
-        );
+    const empresaIdNormalizado =
+      Number(
+        empresaId,
+      );
 
-      error.code =
-        "VENTA_NO_ENCONTRADA";
+    const usuarioIdNormalizado =
+      Number(
+        usuarioId,
+      );
 
-      throw error;
-    }
-
-    const estado =
+    const motivoNormalizado =
       String(
-        ventas[0].estado ??
-          "ACTIVA",
-      )
-        .trim()
-        .toUpperCase();
+        motivo ?? "",
+      ).trim();
 
-    if (
-      estado ===
-      "ANULADA"
-    ) {
-      const error =
-        new Error(
-          "La venta ya se encuentra anulada.",
-        );
+    const connection =
+      await db.getConnection();
 
-      error.code =
-        "VENTA_YA_ANULADA";
+    try {
+      await connection.beginTransaction();
 
-      throw error;
-    }
-
-    if (
-      estado !==
-      "ACTIVA"
-    ) {
-      const error =
-        new Error(
-          `La venta no puede anularse porque su estado actual es ${estado}.`,
-        );
-
-      error.code =
-        "VENTA_NO_ANULABLE";
-
-      throw error;
-    }
-
-    const [usuarios] =
-      await connection.query(
-        `
-          SELECT
-            id
-
-          FROM usuarios
-
-          WHERE
-            id = ?
-            AND empresa_id = ?
-            AND activo = TRUE
-
-          LIMIT 1
-        `,
-        [
-          usuarioIdNormalizado,
-          empresaIdNormalizado,
-        ],
-      );
-
-    if (
-      usuarios.length ===
-      0
-    ) {
-      const error =
-        new Error(
-          "El usuario que intenta anular la venta no existe, está inactivo o no pertenece a la empresa.",
-        );
-
-      error.code =
-        "USUARIO_NO_ENCONTRADO";
-
-      throw error;
-    }
-
-    const [detalles] =
-      await connection.query(
-        `
-          SELECT
-            vd.id,
-            vd.variante_id,
-            vd.cantidad,
-
-            pv.stock_actual,
-
-            p.id AS producto_id
-
-          FROM ventas_detalle vd
-
-          INNER JOIN producto_variantes pv
-            ON pv.id = vd.variante_id
-
-          INNER JOIN productos p
-            ON p.id = pv.producto_id
-
-          WHERE
-            vd.venta_id = ?
-            AND vd.empresa_id = ?
-            AND pv.empresa_id = ?
-            AND p.empresa_id = ?
-
-          ORDER BY
-            vd.variante_id ASC
-
-          FOR UPDATE
-        `,
-        [
-          ventaId,
-          empresaIdNormalizado,
-          empresaIdNormalizado,
-          empresaIdNormalizado,
-        ],
-      );
-
-    if (
-      detalles.length ===
-      0
-    ) {
-      const error =
-        new Error(
-          "La venta no tiene productos para restituir al stock.",
-        );
-
-      error.code =
-        "VENTA_SIN_DETALLE";
-
-      throw error;
-    }
-
-    for (
-      const detalle
-      of detalles
-    ) {
-      const varianteId =
-        Number(
-          detalle.variante_id,
-        );
-
-      const cantidad =
-        Number(
-          detalle.cantidad,
-        );
-
-      const stockAnterior =
-        Number(
-          detalle.stock_actual ??
-            0,
-        );
+      /*
+       * =================================
+       * EMPRESA
+       * =================================
+       */
 
       if (
-        !Number.isFinite(
-          cantidad,
+        !Number.isInteger(
+          empresaIdNormalizado,
         ) ||
-        cantidad <= 0
+        empresaIdNormalizado <= 0
       ) {
         const error =
           new Error(
-            `La cantidad registrada en la variante ${varianteId} no es válida.`,
+            "No se pudo identificar la empresa.",
           );
 
         error.code =
-          "CANTIDAD_VENTA_INVALIDA";
+          "EMPRESA_NO_ASIGNADA";
 
         throw error;
       }
 
-      const stockNuevo =
-        stockAnterior +
-        cantidad;
+      /*
+       * =================================
+       * VENTA ID
+       * =================================
+       */
 
-      const [resultadoStock] =
+      if (
+        !Number.isInteger(
+          ventaId,
+        ) ||
+        ventaId <= 0
+      ) {
+        const error =
+          new Error(
+            "La venta no es válida.",
+          );
+
+        error.code =
+          "VENTA_NO_ENCONTRADA";
+
+        throw error;
+      }
+
+      /*
+       * =================================
+       * USUARIO
+       * =================================
+       */
+
+      if (
+        !Number.isInteger(
+          usuarioIdNormalizado,
+        ) ||
+        usuarioIdNormalizado <= 0
+      ) {
+        const error =
+          new Error(
+            "No se pudo identificar al usuario.",
+          );
+
+        error.code =
+          "USUARIO_NO_ENCONTRADO";
+
+        throw error;
+      }
+
+      /*
+       * =================================
+       * BLOQUEAR VENTA
+       * =================================
+       *
+       * También necesitamos total y
+       * método de pago para generar
+       * la anulación en Caja.
+       */
+
+      const [ventas] =
         await connection.query(
           `
-            UPDATE producto_variantes pv
+            SELECT
+              id,
+              empresa_id,
+              total,
+              metodo_pago,
+              estado
 
-            SET
-              pv.stock_actual = ?
+            FROM ventas
 
             WHERE
-              pv.id = ?
-              AND pv.empresa_id = ?
+              id = ?
+              AND empresa_id = ?
 
-              AND EXISTS (
-                SELECT 1
+            LIMIT 1
 
-                FROM productos p
-
-                WHERE
-                  p.id = pv.producto_id
-                  AND p.empresa_id = ?
-              )
+            FOR UPDATE
           `,
           [
-            stockNuevo,
-            varianteId,
+            ventaId,
+            empresaIdNormalizado,
+          ],
+        );
+
+      if (
+        ventas.length ===
+        0
+      ) {
+        const error =
+          new Error(
+            "Venta no encontrada.",
+          );
+
+        error.code =
+          "VENTA_NO_ENCONTRADA";
+
+        throw error;
+      }
+
+      const venta =
+        ventas[0];
+
+      const totalVenta =
+        Number(
+          venta.total ??
+            0,
+        );
+
+      const metodoPago =
+        String(
+          venta.metodo_pago ??
+            "",
+        )
+          .trim()
+          .toUpperCase();
+
+      const estado =
+        String(
+          venta.estado ??
+            "ACTIVA",
+        )
+          .trim()
+          .toUpperCase();
+
+      if (
+        estado ===
+        "ANULADA"
+      ) {
+        const error =
+          new Error(
+            "La venta ya se encuentra anulada.",
+          );
+
+        error.code =
+          "VENTA_YA_ANULADA";
+
+        throw error;
+      }
+
+      if (
+        estado !==
+        "ACTIVA"
+      ) {
+        const error =
+          new Error(
+            `La venta no puede anularse porque su estado actual es ${estado}.`,
+          );
+
+        error.code =
+          "VENTA_NO_ANULABLE";
+
+        throw error;
+      }
+
+      /*
+       * =================================
+       * VALIDAR USUARIO
+       * =================================
+       */
+
+      const [usuarios] =
+        await connection.query(
+          `
+            SELECT
+              id
+
+            FROM usuarios
+
+            WHERE
+              id = ?
+              AND empresa_id = ?
+              AND activo = TRUE
+
+            LIMIT 1
+          `,
+          [
+            usuarioIdNormalizado,
+            empresaIdNormalizado,
+          ],
+        );
+
+      if (
+        usuarios.length ===
+        0
+      ) {
+        const error =
+          new Error(
+            "El usuario que intenta anular la venta no existe, está inactivo o no pertenece a la empresa.",
+          );
+
+        error.code =
+          "USUARIO_NO_ENCONTRADO";
+
+        throw error;
+      }
+
+      /*
+       * =================================
+       * DETALLE DE VENTA
+       * =================================
+       */
+
+      const [detalles] =
+        await connection.query(
+          `
+            SELECT
+              vd.id,
+              vd.variante_id,
+              vd.cantidad,
+
+              pv.stock_actual,
+
+              p.id AS producto_id
+
+            FROM ventas_detalle vd
+
+            INNER JOIN producto_variantes pv
+              ON pv.id =
+                vd.variante_id
+
+            INNER JOIN productos p
+              ON p.id =
+                pv.producto_id
+
+            WHERE
+              vd.venta_id = ?
+              AND vd.empresa_id = ?
+              AND pv.empresa_id = ?
+              AND p.empresa_id = ?
+
+            ORDER BY
+              vd.variante_id ASC
+
+            FOR UPDATE
+          `,
+          [
+            ventaId,
+            empresaIdNormalizado,
             empresaIdNormalizado,
             empresaIdNormalizado,
           ],
         );
 
       if (
-        resultadoStock.affectedRows ===
+        detalles.length ===
         0
       ) {
         const error =
           new Error(
-            `No se pudo restituir el stock de la variante ${varianteId}.`,
+            "La venta no tiene productos para restituir al stock.",
           );
 
         error.code =
-          "VARIANTE_NO_ENCONTRADA";
+          "VENTA_SIN_DETALLE";
 
         throw error;
       }
 
-      await connection.query(
-        `
-          INSERT INTO movimientos_stock
-          (
-            empresa_id,
-            variante_id,
-            tipo,
+      /*
+       * =================================
+       * DEVOLVER STOCK
+       * =================================
+       */
+
+      for (
+        const detalle
+        of detalles
+      ) {
+        const varianteId =
+          Number(
+            detalle.variante_id,
+          );
+
+        const cantidad =
+          Number(
+            detalle.cantidad,
+          );
+
+        const stockAnterior =
+          Number(
+            detalle.stock_actual ??
+              0,
+          );
+
+        if (
+          !Number.isFinite(
             cantidad,
-            stock_anterior,
-            stock_nuevo,
-            referencia,
-            usuario_id,
-            observacion
-          )
+          ) ||
+          cantidad <= 0
+        ) {
+          const error =
+            new Error(
+              `La cantidad registrada en la variante ${varianteId} no es válida.`,
+            );
 
-          VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-          )
-        `,
-        [
-          empresaIdNormalizado,
-          varianteId,
-          "ANULACION_VENTA",
-          cantidad,
-          stockAnterior,
-          stockNuevo,
-          `Anulación venta #${ventaId}`,
-          usuarioIdNormalizado,
-          motivoNormalizado,
-        ],
-      );
-    }
+          error.code =
+            "CANTIDAD_VENTA_INVALIDA";
 
-    const [resultadoVenta] =
-      await connection.query(
-        `
-          UPDATE ventas
+          throw error;
+        }
 
-          SET
-            estado =
-              'ANULADA',
+        const stockNuevo =
+          stockAnterior +
+          cantidad;
 
-            anulada_at =
-              CURRENT_TIMESTAMP,
+        const [resultadoStock] =
+          await connection.query(
+            `
+              UPDATE producto_variantes pv
 
-            anulada_por = ?,
+              SET
+                pv.stock_actual = ?
 
-            motivo_anulacion = ?
+              WHERE
+                pv.id = ?
+                AND pv.empresa_id = ?
 
-          WHERE
-            id = ?
-            AND empresa_id = ?
-            AND estado =
-              'ACTIVA'
-        `,
-        [
-          usuarioIdNormalizado,
-          motivoNormalizado,
-          ventaId,
-          empresaIdNormalizado,
-        ],
-      );
+                AND EXISTS (
+                  SELECT 1
 
-    if (
-      resultadoVenta.affectedRows !==
-      1
-    ) {
-      const error =
-        new Error(
-          "No se pudo marcar la venta como anulada.",
+                  FROM productos p
+
+                  WHERE
+                    p.id =
+                      pv.producto_id
+
+                    AND p.empresa_id = ?
+                )
+            `,
+            [
+              stockNuevo,
+              varianteId,
+              empresaIdNormalizado,
+              empresaIdNormalizado,
+            ],
+          );
+
+        if (
+          resultadoStock.affectedRows ===
+          0
+        ) {
+          const error =
+            new Error(
+              `No se pudo restituir el stock de la variante ${varianteId}.`,
+            );
+
+          error.code =
+            "VARIANTE_NO_ENCONTRADA";
+
+          throw error;
+        }
+
+        /*
+         * MOVIMIENTO DE STOCK
+         */
+
+        await connection.query(
+          `
+            INSERT INTO movimientos_stock
+            (
+              empresa_id,
+              variante_id,
+              tipo,
+              cantidad,
+              stock_anterior,
+              stock_nuevo,
+              referencia,
+              usuario_id,
+              observacion
+            )
+
+            VALUES (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?
+            )
+          `,
+          [
+            empresaIdNormalizado,
+            varianteId,
+            "ANULACION_VENTA",
+            cantidad,
+            stockAnterior,
+            stockNuevo,
+            `Anulación venta #${ventaId}`,
+            usuarioIdNormalizado,
+            motivoNormalizado,
+          ],
+        );
+      }
+
+      /*
+       * =================================
+       * MARCAR VENTA ANULADA
+       * =================================
+       */
+
+      const [resultadoVenta] =
+        await connection.query(
+          `
+            UPDATE ventas
+
+            SET
+              estado =
+                'ANULADA',
+
+              anulada_at =
+                CURRENT_TIMESTAMP,
+
+              anulada_por = ?,
+
+              motivo_anulacion = ?
+
+            WHERE
+              id = ?
+              AND empresa_id = ?
+              AND estado =
+                'ACTIVA'
+          `,
+          [
+            usuarioIdNormalizado,
+            motivoNormalizado,
+            ventaId,
+            empresaIdNormalizado,
+          ],
         );
 
-      error.code =
-        "VENTA_NO_ANULABLE";
+      if (
+        resultadoVenta.affectedRows !==
+        1
+      ) {
+        const error =
+          new Error(
+            "No se pudo marcar la venta como anulada.",
+          );
+
+        error.code =
+          "VENTA_NO_ANULABLE";
+
+        throw error;
+      }
+
+      /*
+       * =================================
+       * MOVIMIENTO DE CAJA - ANULACIÓN
+       * =================================
+       *
+       * También queda dentro de la misma
+       * transacción.
+       *
+       * Si la venta fue EFECTIVO:
+       * reduce el efectivo teórico.
+       *
+       * Si fue tarjeta/transferencia:
+       * queda reflejada en el resumen,
+       * pero no modifica efectivo físico.
+       */
+
+      if (
+        Number.isFinite(
+          totalVenta,
+        ) &&
+        totalVenta > 0
+      ) {
+        await cajaService
+          .registrarMovimiento({
+            connection,
+
+            empresaId:
+              empresaIdNormalizado,
+
+            usuarioId:
+              usuarioIdNormalizado,
+
+            tipo:
+              "ANULACION_VENTA",
+
+            medioPago:
+              metodoPago,
+
+            monto:
+              totalVenta,
+
+            descripcion:
+              `Anulación venta #${ventaId}: ${motivoNormalizado}`,
+
+            ventaId,
+          });
+      }
+
+      /*
+       * =================================
+       * COMMIT
+       * =================================
+       */
+
+      await connection.commit();
+
+      return await obtenerVentaPorId(
+        ventaId,
+        empresaIdNormalizado,
+      );
+    } catch (error) {
+      await connection.rollback();
 
       throw error;
+    } finally {
+      connection.release();
     }
+  };
 
-    await connection.commit();
-
-    return await obtenerVentaPorId(
-      ventaId,
-      empresaIdNormalizado,
-    );
-  } catch (error) {
-    await connection.rollback();
-
-    throw error;
-  } finally {
-    connection.release();
-  }
-};
+/*
+ * =====================================
+ * EXPORTS
+ * =====================================
+ */
 
 module.exports = {
   obtenerVentas,
