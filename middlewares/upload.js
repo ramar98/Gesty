@@ -92,9 +92,11 @@ const storage =
       cb,
     ) => {
       const extension =
-        path.extname(
-          file.originalname,
-        );
+        path
+          .extname(
+            file.originalname,
+          )
+          .toLowerCase();
 
       const nombreBase =
         path
@@ -123,6 +125,14 @@ const storage =
  * =====================================
  */
 
+const EXTENSIONES_PERMITIDAS =
+  [
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+  ];
+
 const fileFilter = (
   req,
   file,
@@ -134,11 +144,28 @@ const fileFilter = (
     "image/webp",
   ];
 
-  if (
+  /*
+   * El mimetype lo informa el cliente
+   * y puede ser falsificado, así que
+   * también verificamos la extensión.
+   */
+
+  const extension =
+    path
+      .extname(
+        file.originalname,
+      )
+      .toLowerCase();
+
+  const valido =
     tiposPermitidos.includes(
       file.mimetype,
-    )
-  ) {
+    ) &&
+    EXTENSIONES_PERMITIDAS.includes(
+      extension,
+    );
+
+  if (valido) {
     cb(
       null,
       true,
