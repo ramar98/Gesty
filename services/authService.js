@@ -309,6 +309,21 @@ const validarRol =
  * =====================================
  */
 
+/*
+ * =====================================
+ * HASH DUMMY
+ * =====================================
+ *
+ * Cuando el identificador no coincide
+ * con ningún usuario, comparamos contra
+ * un hash fijo para que el tiempo de
+ * respuesta no revele si la cuenta
+ * existe (enumeración por timing).
+ */
+
+const HASH_DUMMY =
+  "$2b$12$LJ3m4yS5zW3e0uY7Q1sZKOjQv1wKkG0VbO0y8H2m9Yv6d0nJ8v3mS";
+
 const iniciarSesion =
   async ({
     identificador,
@@ -323,6 +338,13 @@ const iniciarSesion =
       candidatos.length ===
       0
     ) {
+      await bcrypt.compare(
+        String(
+          password ?? "",
+        ),
+        HASH_DUMMY,
+      );
+
       const error =
         new Error(
           "El usuario, correo o contraseña son incorrectos.",

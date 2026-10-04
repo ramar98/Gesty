@@ -43,32 +43,6 @@ fs.mkdirSync(
 
 /*
  * =====================================
- * DEBUG
- * =====================================
- */
-
-console.log(
-  "======================================",
-);
-
-console.log(
-  "RAILWAY_VOLUME_MOUNT_PATH:",
-  process.env
-    .RAILWAY_VOLUME_MOUNT_PATH ||
-    "NO DEFINIDO",
-);
-
-console.log(
-  "Carpeta física de imágenes:",
-  productosDir,
-);
-
-console.log(
-  "======================================",
-);
-
-/*
- * =====================================
  * STORAGE
  * =====================================
  */
