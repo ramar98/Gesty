@@ -57,6 +57,14 @@ router.post(
 );
 
 router.post(
+  "/verificar",
+  autorizarRoles(
+    "ADMINISTRADOR",
+  ),
+  controller.verificarPago,
+);
+
+router.post(
   "/codigo",
   autorizarRoles(
     "ADMINISTRADOR",

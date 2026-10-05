@@ -321,6 +321,142 @@ const crearPago = async (
 
 /*
  * =====================================
+ * BUSCAR PAGO EN MERCADO PAGO
+ *
+ * Por external_reference (nuestro id
+ * de pagos_suscripcion). No confiamos
+ * solo en el webhook: esto permite
+ * verificar el estado en vivo.
+ * =====================================
+ */
+
+const buscarPagoPorReferencia = async (
+  referencia,
+) => {
+  const referenciaLimpia = String(
+    referencia ?? "",
+  ).trim();
+
+  if (!referenciaLimpia) {
+    return null;
+  }
+
+  const { paymentClient } =
+    obtenerClientes();
+
+  const resultado =
+    await paymentClient.search({
+      options: {
+        criteria: "desc",
+        sort: "date_created",
+        external_reference:
+          referenciaLimpia,
+      },
+    });
+
+  const pagos = Array.isArray(
+    resultado?.results,
+  )
+    ? resultado.results
+    : [];
+
+  /*
+   * MP puede devolver pagos que no
+   * coinciden exactamente: filtramos
+   * por referencia exacta.
+   */
+
+  const coincidentes = pagos.filter(
+    (pago) =>
+      String(
+        pago?.external_reference ??
+          "",
+      ).trim() === referenciaLimpia,
+  );
+
+  if (coincidentes.length === 0) {
+    return null;
+  }
+
+  return (
+    coincidentes.find(
+      (pago) =>
+        pago.status === "approved",
+    ) ?? coincidentes[0]
+  );
+};
+
+/*
+ * =====================================
+ * VERIFICAR ÚLTIMO PAGO PENDIENTE
+ *
+ * Consulta MP en vivo por el último
+ * pago pendiente de la empresa y lo
+ * procesa si ya se acreditó.
+ * =====================================
+ */
+
+const verificarPagoPendiente = async (
+  empresaId,
+) => {
+  const [pendientes] = await db.query(
+    `
+      SELECT
+        id,
+        monto,
+        meses
+
+      FROM pagos_suscripcion
+
+      WHERE
+        empresa_id = ?
+        AND estado = 'PENDIENTE'
+
+      ORDER BY id DESC
+
+      LIMIT 1
+    `,
+    [empresaId],
+  );
+
+  const pendiente = pendientes[0];
+
+  if (!pendiente) {
+    return {
+      pendiente: false,
+    };
+  }
+
+  const pagoMp =
+    await buscarPagoPorReferencia(
+      pendiente.id,
+    );
+
+  if (!pagoMp) {
+    return {
+      pendiente: true,
+      estado: "SIN_ACREDITAR",
+    };
+  }
+
+  const resultado =
+    await registrarPagoAprobado(
+      pendiente.id,
+      pagoMp.id,
+      pagoMp.status,
+      Number(
+        pagoMp.transaction_amount,
+      ),
+    );
+
+  return {
+    pendiente: true,
+    ...resultado,
+  };
+};
+
+/*
+ * =====================================
  * REGISTRAR PAGO APROBADO
  *
  * Idempotente: solo extiende la
@@ -333,6 +469,7 @@ const registrarPagoAprobado = async (
   pagoId,
   mpPaymentId,
   estado,
+  montoMp = null,
 ) => {
   const estadoFinal =
     estado === "approved"
@@ -395,7 +532,8 @@ const registrarPagoAprobado = async (
             SELECT
               empresa_id,
               codigo_id,
-              meses
+              meses,
+              monto
 
             FROM pagos_suscripcion
 
@@ -407,6 +545,19 @@ const registrarPagoAprobado = async (
         );
 
       const pago = pagos[0];
+
+      if (
+        pago &&
+        montoMp !== null &&
+        Number.isFinite(montoMp) &&
+        Math.abs(
+          Number(pago.monto) - montoMp,
+        ) > 0.01
+      ) {
+        throw new Error(
+          `El monto del pago no coincide: esperado ${pago.monto}, recibido ${montoMp}.`,
+        );
+      }
 
       if (pago) {
         await suscripcionesService.extender(
@@ -504,10 +655,15 @@ const procesarWebhook = async (
     pagoId,
     pagoMp.id,
     pagoMp.status,
+    Number(
+      pagoMp.transaction_amount,
+    ),
   );
 };
 
 module.exports = {
   crearPago,
   procesarWebhook,
+  verificarPagoPendiente,
+  buscarPagoPorReferencia,
 };
