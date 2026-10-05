@@ -196,6 +196,58 @@ exports.crearPago = async (
 
 /*
  * ===================================
+ * VERIFICAR PAGO PENDIENTE
+ *
+ * Consulta Mercado Pago en vivo por
+ * el último pago pendiente de la
+ * empresa. Útil para acreditar sin
+ * depender del webhook (local, caídas,
+ * demoras de notificación).
+ * ===================================
+ */
+
+exports.verificarPago = async (
+  req,
+  res,
+) => {
+  const empresaId =
+    obtenerEmpresaId(req);
+
+  if (!empresaId) {
+    return res.status(403).json({
+      success: false,
+
+      message:
+        "No se pudo determinar la empresa del usuario autenticado.",
+    });
+  }
+
+  try {
+    const resultado =
+      await pagosService.verificarPagoPendiente(
+        empresaId,
+      );
+
+    const estado =
+      await suscripcionesService.obtenerEstado(
+        empresaId,
+      );
+
+    return res.status(200).json({
+      success: true,
+
+      data: {
+        ...resultado,
+        suscripcion: estado,
+      },
+    });
+  } catch (error) {
+    return responderError(res, error);
+  }
+};
+
+/*
+ * ===================================
  * CANJEAR CÓDIGO DE MESES GRATIS
  *
  * El usuario autenticado canjea un
