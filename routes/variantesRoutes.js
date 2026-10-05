@@ -38,6 +38,15 @@ router.get(
 );
 
 router.get(
+  "/codigo/:codigo",
+  autorizarRoles(
+    "ADMINISTRADOR",
+    "VENDEDOR",
+  ),
+  controller.obtenerVariantePorCodigo,
+);
+
+router.get(
   "/:id",
   autorizarRoles(
     "ADMINISTRADOR",

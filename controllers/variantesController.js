@@ -609,6 +609,90 @@ exports.obtenerVariante =
 
 /*
  * ===================================
+ * GET VARIANTE POR CÓDIGO DE BARRAS
+ * ===================================
+ */
+
+exports.obtenerVariantePorCodigo =
+  async (
+    req,
+    res,
+  ) => {
+    const codigo =
+      normalizarTextoOpcional(
+        req.params.codigo,
+      );
+
+    if (!codigo) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            "El código de barras no es válido.",
+        });
+    }
+
+    const empresaId =
+      obtenerEmpresaId(req);
+
+    if (!empresaId) {
+      return responderEmpresaNoValida(
+        res,
+      );
+    }
+
+    try {
+      const resultado =
+        await variantesService.obtenerVariantePorCodigo(
+          codigo,
+          empresaId,
+        );
+
+      if (!resultado) {
+        return res
+          .status(404)
+          .json({
+            success: false,
+
+            message:
+              "Variante no encontrada.",
+          });
+      }
+
+      const administrador =
+        esAdministrador(req);
+
+      const varianteFiltrada =
+        filtrarVariantePorRol(
+          resultado.variante,
+          administrador,
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          data: {
+            variante:
+              varianteFiltrada,
+
+            producto:
+              resultado.producto,
+          },
+        });
+    } catch (error) {
+      return responderError(
+        res,
+        error,
+      );
+    }
+  };
+
+/*
+ * ===================================
  * CREAR
  * SOLO ADMINISTRADOR
  * ===================================
