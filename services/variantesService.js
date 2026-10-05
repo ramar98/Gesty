@@ -114,6 +114,140 @@ const obtenerVariantePorId = async (
 
 /*
  * =====================================
+ * OBTENER VARIANTE POR CÓDIGO DE BARRAS
+ * =====================================
+ */
+
+const obtenerVariantePorCodigo = async (
+  codigo,
+  empresaId,
+) => {
+  const [rows] = await db.query(
+    `
+      SELECT
+        v.id,
+        v.producto_id,
+        v.color_id,
+        v.talle_id,
+        v.codigo_barras,
+        v.precio_costo,
+        v.precio_venta,
+        v.stock_actual,
+        v.stock_minimo,
+        v.created_at,
+
+        c.nombre AS color,
+        t.nombre AS talle,
+
+        p.codigo
+          AS producto_codigo,
+        p.nombre
+          AS producto_nombre,
+        p.descripcion
+          AS producto_descripcion,
+        p.categoria_id
+          AS producto_categoria_id,
+        cat.nombre
+          AS producto_categoria,
+        p.marca_id
+          AS producto_marca_id,
+        p.proveedor_id
+          AS producto_proveedor_id,
+        p.usa_variantes
+          AS producto_usa_variantes,
+
+        (
+          SELECT
+            pi.ruta
+
+          FROM producto_imagenes pi
+
+          WHERE
+            pi.producto_id =
+              p.id
+
+          ORDER BY
+            pi.principal DESC,
+            pi.id ASC
+
+          LIMIT 1
+        ) AS producto_imagen
+
+      FROM producto_variantes v
+
+      INNER JOIN productos p
+        ON p.id = v.producto_id
+
+      LEFT JOIN colores c
+        ON c.id = v.color_id
+       AND c.empresa_id = p.empresa_id
+
+      LEFT JOIN talles t
+        ON t.id = v.talle_id
+       AND t.empresa_id = p.empresa_id
+
+      LEFT JOIN categorias cat
+        ON cat.id = p.categoria_id
+       AND cat.empresa_id = p.empresa_id
+
+      WHERE
+        v.codigo_barras = ?
+        AND p.empresa_id = ?
+        AND p.activo = TRUE
+
+      LIMIT 1
+    `,
+    [
+      codigo,
+      empresaId,
+    ],
+  );
+
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const {
+    producto_codigo,
+    producto_nombre,
+    producto_descripcion,
+    producto_categoria_id,
+    producto_categoria,
+    producto_marca_id,
+    producto_proveedor_id,
+    producto_usa_variantes,
+    producto_imagen,
+    ...variante
+  } = row;
+
+  return {
+    variante,
+
+    producto: {
+      id: variante.producto_id,
+      codigo: producto_codigo,
+      nombre: producto_nombre,
+      descripcion:
+        producto_descripcion,
+      categoria_id:
+        producto_categoria_id,
+      categoria:
+        producto_categoria,
+      marca_id:
+        producto_marca_id,
+      proveedor_id:
+        producto_proveedor_id,
+      usa_variantes:
+        producto_usa_variantes,
+      imagen: producto_imagen,
+    },
+  };
+};
+
+/*
+ * =====================================
  * VALIDAR PRODUCTO
  * =====================================
  */
@@ -818,6 +952,7 @@ const eliminarVariante = async (
 module.exports = {
   obtenerVariantes,
   obtenerVariantePorId,
+  obtenerVariantePorCodigo,
   crearVariante,
   actualizarVariante,
   eliminarVariante,
