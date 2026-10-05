@@ -1,6 +1,14 @@
 const bcrypt = require("bcryptjs");
 const db = require("../config/db");
 
+const suscripcionesService = require(
+  "./suscripcionesService",
+);
+
+const codigosService = require(
+  "./codigosService",
+);
+
 /*
  * =====================================
  * BUSCAR ROL ADMINISTRADOR
@@ -49,6 +57,7 @@ async function obtenerRolAdministrador(
 const crearEmpresa = async ({
   empresa,
   administrador,
+  codigoPromocional,
 }) => {
   const connection =
     await db.getConnection();
@@ -259,6 +268,54 @@ const crearEmpresa = async ({
         empresa.nombre,
       ],
     );
+
+    /*
+     * =================================
+     * SUSCRIPCIÓN INICIAL
+     *
+     * Con código MESES_GRATIS arranca
+     * con meses gratis; si no hay
+     * código aplica el trial
+     * configurado (0 días = paywall
+     * inmediato).
+     * =================================
+     */
+
+    if (codigoPromocional) {
+      const codigo =
+        await codigosService.validarCodigo(
+          codigoPromocional,
+        );
+
+      if (
+        codigo.tipo !== "MESES_GRATIS"
+      ) {
+        const error = new Error(
+          "Este código es de descuento: usalo al pagar tu suscripción.",
+        );
+
+        error.code =
+          "CODIGO_TIPO_INCORRECTO";
+
+        throw error;
+      }
+
+      await codigosService.consumirCodigo(
+        codigo.id,
+        connection,
+      );
+
+      await suscripcionesService.extender(
+        empresaId,
+        codigo.meses_gratis,
+        connection,
+      );
+    } else {
+      await suscripcionesService.aplicarVencimientoInicial(
+        empresaId,
+        connection,
+      );
+    }
 
     /*
      * =================================

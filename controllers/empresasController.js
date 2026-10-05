@@ -257,6 +257,20 @@ function validarAlta(
     );
   }
 
+  const codigoPromocional =
+    normalizarTextoOpcional(
+      body.codigo_promocional,
+    );
+
+  if (
+    codigoPromocional &&
+    codigoPromocional.length > 50
+  ) {
+    errores.push(
+      "El código promocional no puede superar los 50 caracteres.",
+    );
+  }
+
   return {
     valido:
       errores.length === 0,
@@ -266,6 +280,7 @@ function validarAlta(
     datos: {
       empresa,
       administrador,
+      codigoPromocional,
     },
   };
 }
@@ -294,6 +309,42 @@ function responderError(
 
       message:
         "Ya existe un registro con esos datos.",
+    },
+
+    CODIGO_NO_EXISTE: {
+      status: 404,
+
+      message: error.message,
+    },
+
+    CODIGO_INACTIVO: {
+      status: 400,
+
+      message: error.message,
+    },
+
+    CODIGO_VENCIDO: {
+      status: 400,
+
+      message: error.message,
+    },
+
+    CODIGO_AGOTADO: {
+      status: 400,
+
+      message: error.message,
+    },
+
+    CODIGO_VACIO: {
+      status: 400,
+
+      message: error.message,
+    },
+
+    CODIGO_TIPO_INCORRECTO: {
+      status: 400,
+
+      message: error.message,
     },
   };
 
