@@ -82,6 +82,14 @@ const cajaRoutes =
     "./routes/cajaRoutes",
   );
 
+const suscripcionRoutes = require(
+  "./routes/suscripcionRoutes",
+);
+
+const codigosRoutes = require(
+  "./routes/codigosRoutes",
+);
+
 // =======================
 // AUTENTICACIÓN
 // =======================
@@ -90,6 +98,12 @@ const {
   verificarAutenticacion,
 } = require(
   "./middlewares/authMiddleware",
+);
+
+const {
+  verificarSuscripcionActiva,
+} = require(
+  "./middlewares/suscripcionMiddleware",
 );
 
 // =======================
@@ -189,6 +203,30 @@ app.use(
   empresasRoutes,
 );
 
+/*
+ * ============================
+ * SUSCRIPCIÓN Y CÓDIGOS
+ * ============================
+ *
+ * Se montan ANTES del control de
+ * suscripción: si la empresa está
+ * vencida, justamente necesita
+ * poder pagar o canjear un código.
+ *
+ * El webhook de Mercado Pago es
+ * público y se valida por firma.
+ */
+
+app.use(
+  "/api/suscripcion",
+  suscripcionRoutes,
+);
+
+app.use(
+  "/api/codigos",
+  codigosRoutes,
+);
+
 // =======================
 // PROTECCIÓN GLOBAL API
 // =======================
@@ -209,6 +247,7 @@ app.use(
 app.use(
   "/api",
   verificarAutenticacion,
+  verificarSuscripcionActiva,
 );
 
 // =======================
