@@ -12,6 +12,7 @@ const ventasController =
 
 const {
   verificarAutenticacion,
+  autorizarRoles,
 } = require(
   "../middlewares/authMiddleware",
 );
@@ -61,6 +62,9 @@ router.post(
  */
 router.patch(
   "/:id/anular",
+  autorizarRoles(
+    "Administrador",
+  ),
   ventasController.anularVenta,
 );
 

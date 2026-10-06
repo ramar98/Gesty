@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 require("dotenv").config();
 
@@ -82,6 +84,14 @@ const cajaRoutes =
     "./routes/cajaRoutes",
   );
 
+const suscripcionRoutes = require(
+  "./routes/suscripcionRoutes",
+);
+
+const codigosRoutes = require(
+  "./routes/codigosRoutes",
+);
+
 // =======================
 // AUTENTICACIÓN
 // =======================
@@ -92,6 +102,12 @@ const {
   "./middlewares/authMiddleware",
 );
 
+const {
+  verificarSuscripcionActiva,
+} = require(
+  "./middlewares/suscripcionMiddleware",
+);
+
 // =======================
 // APP
 // =======================
@@ -99,10 +115,134 @@ const {
 const app = express();
 
 // =======================
-// MIDDLEWARES GENERALES
+// SEGURIDAD
 // =======================
 
-app.use(cors());
+/*
+ * helmet:
+ *
+ * crossOriginResourcePolicy "cross-origin"
+ * es necesario para que el front (otro
+ * subdominio) pueda cargar las imágenes
+ * servidas desde /uploads.
+ */
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: {
+      policy:
+        "cross-origin",
+    },
+  }),
+);
+
+/*
+ * CORS:
+ *
+ * Solo se aceptan los orígenes del front
+ * en producción y los puertos de desarrollo
+ * local. Se pueden agregar más mediante la
+ * variable de entorno CORS_ORIGINS
+ * (separados por coma).
+ *
+ * Las peticiones sin Origin (curl,
+ * server-to-server, apps nativas) no se
+ * ven afectadas por CORS.
+ */
+
+const origenesPermitidos =
+  (
+    process.env.CORS_ORIGINS ||
+    "https://app.gesty.msoftware.com.ar,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
+  )
+    .split(",")
+    .map((origen) =>
+      origen.trim(),
+    )
+    .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (
+      origin,
+      callback,
+    ) => {
+      if (
+        !origin ||
+        origenesPermitidos.includes(
+          origin,
+        )
+      ) {
+        return callback(
+          null,
+          true,
+        );
+      }
+
+      return callback(
+        new Error(
+          "Origen no permitido por CORS.",
+        ),
+      );
+    },
+  }),
+);
+
+/*
+ * Rate limiting:
+ *
+ * Protege contra fuerza bruta y abuso.
+ * El límite general es generoso para no
+ * afectar el uso normal de la app.
+ */
+
+const limiteGeneral =
+  rateLimit({
+    windowMs:
+      10 * 60 * 1000,
+
+    limit: 1200,
+
+    standardHeaders: true,
+
+    legacyHeaders: false,
+
+    message: {
+      success: false,
+
+      message:
+        "Demasiadas peticiones. Intentá nuevamente en unos minutos.",
+    },
+  });
+
+const limiteLogin =
+  rateLimit({
+    windowMs:
+      15 * 60 * 1000,
+
+    limit: 20,
+
+    standardHeaders: true,
+
+    legacyHeaders: false,
+
+    message: {
+      success: false,
+
+      message:
+        "Demasiados intentos de inicio de sesión. Esperá 15 minutos.",
+    },
+  });
+
+app.use(
+  "/api",
+  limiteGeneral,
+);
+
+app.use(
+  "/api/auth/login",
+  limiteLogin,
+);
 
 app.use(express.json());
 
@@ -189,6 +329,30 @@ app.use(
   empresasRoutes,
 );
 
+/*
+ * ============================
+ * SUSCRIPCIÓN Y CÓDIGOS
+ * ============================
+ *
+ * Se montan ANTES del control de
+ * suscripción: si la empresa está
+ * vencida, justamente necesita
+ * poder pagar o canjear un código.
+ *
+ * El webhook de Mercado Pago es
+ * público y se valida por firma.
+ */
+
+app.use(
+  "/api/suscripcion",
+  suscripcionRoutes,
+);
+
+app.use(
+  "/api/codigos",
+  codigosRoutes,
+);
+
 // =======================
 // PROTECCIÓN GLOBAL API
 // =======================
@@ -209,6 +373,7 @@ app.use(
 app.use(
   "/api",
   verificarAutenticacion,
+  verificarSuscripcionActiva,
 );
 
 // =======================
@@ -443,10 +608,7 @@ app.get(
           ok: false,
 
           error:
-            error.message,
-
-          code:
-            error.code,
+            "Error de conexión con la base de datos.",
         });
     }
   },
