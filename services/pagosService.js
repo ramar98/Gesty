@@ -268,15 +268,25 @@ const crearPago = async (
 
     external_reference:
       String(pagoId),
+  };
 
-    back_urls: {
+  /*
+   * MP exige URL pública para las
+   * back_urls + auto_return: en
+   * localhost no las enviamos.
+   */
+
+  if (
+    !frontendUrl.includes("localhost")
+  ) {
+    body.back_urls = {
       success: `${frontendUrl}/suscripcion?resultado=exito`,
       pending: `${frontendUrl}/suscripcion?resultado=pendiente`,
       failure: `${frontendUrl}/suscripcion?resultado=error`,
-    },
+    };
 
-    auto_return: "approved",
-  };
+    body.auto_return = "approved";
+  }
 
   /*
    * MP exige URL pública para el
@@ -317,6 +327,73 @@ const crearPago = async (
     sandbox_init_point:
       preferencia.sandbox_init_point,
   };
+};
+
+/*
+ * =====================================
+ * PREFERENCIA PARA REGISTRO
+ *
+ * Igual que crearPago pero para el
+ * alta de empresa: la referencia es
+ * REG-XXXX y la vuelta va a
+ * /registro/pago.
+ * =====================================
+ */
+
+const crearPreferenciaRegistro = async ({
+  referencia,
+  monto,
+  meses,
+}) => {
+  const frontendUrl = String(
+    process.env.FRONTEND_URL ||
+      "http://localhost:5173",
+  ).replace(/\/+$/, "");
+
+  const apiUrl = String(
+    process.env.API_PUBLIC_URL ||
+      "http://localhost:3001",
+  ).replace(/\/+$/, "");
+
+  const body = {
+    items: [
+      {
+        id: "registro-gesty",
+        title: `Gesty - Alta de empresa (${meses} mes${
+          meses > 1 ? "es" : ""
+        })`,
+        quantity: 1,
+        unit_price: monto,
+        currency_id: "ARS",
+      },
+    ],
+
+    external_reference: referencia,
+  };
+
+  if (
+    !frontendUrl.includes("localhost")
+  ) {
+    body.back_urls = {
+      success: `${frontendUrl}/registro/pago?resultado=exito`,
+      pending: `${frontendUrl}/registro/pago?resultado=pendiente`,
+      failure: `${frontendUrl}/registro/pago?resultado=error`,
+    };
+
+    body.auto_return = "approved";
+  }
+
+  if (!apiUrl.includes("localhost")) {
+    body.notification_url =
+      `${apiUrl}/api/suscripcion/webhook`;
+  }
+
+  const { preferenceClient } =
+    obtenerClientes();
+
+  return preferenceClient.create({
+    body,
+  });
 };
 
 /*
@@ -641,9 +718,32 @@ const procesarWebhook = async (
       id: String(paymentId),
     });
 
-  const pagoId = Number(
-    pagoMp.external_reference,
+  const referencia = String(
+    pagoMp.external_reference ?? "",
   );
+
+  /*
+   * Pagos de alta de empresa
+   * (referencia REG-XXXX): los crea
+   * empresa al acreditarse.
+   */
+
+  if (referencia.startsWith("REG-")) {
+    const registroService = require(
+      "./registroService",
+    );
+
+    return registroService.confirmarRegistro(
+      referencia,
+      pagoMp.id,
+      pagoMp.status,
+      Number(
+        pagoMp.transaction_amount,
+      ),
+    );
+  }
+
+  const pagoId = Number(referencia);
 
   if (!pagoId) {
     return {
@@ -663,6 +763,7 @@ const procesarWebhook = async (
 
 module.exports = {
   crearPago,
+  crearPreferenciaRegistro,
   procesarWebhook,
   verificarPagoPendiente,
   buscarPagoPorReferencia,

@@ -58,6 +58,7 @@ const crearEmpresa = async ({
   empresa,
   administrador,
   codigoPromocional,
+  mesesPagados,
 }) => {
   const connection =
     await db.getConnection();
@@ -180,10 +181,11 @@ const crearEmpresa = async ({
      */
 
     const passwordHash =
-      await bcrypt.hash(
+      administrador.passwordHash ??
+      (await bcrypt.hash(
         administrador.password,
         12,
-      );
+      ));
 
     /*
      * =================================
@@ -273,6 +275,9 @@ const crearEmpresa = async ({
      * =================================
      * SUSCRIPCIÓN INICIAL
      *
+     * mesesPagados: la empresa se creó
+     * después de un pago acreditado.
+     *
      * Con código MESES_GRATIS arranca
      * con meses gratis; si no hay
      * código aplica el trial
@@ -281,7 +286,16 @@ const crearEmpresa = async ({
      * =================================
      */
 
-    if (codigoPromocional) {
+    if (
+      Number.isInteger(mesesPagados) &&
+      mesesPagados > 0
+    ) {
+      await suscripcionesService.extender(
+        empresaId,
+        mesesPagados,
+        connection,
+      );
+    } else if (codigoPromocional) {
       const codigo =
         await codigosService.validarCodigo(
           codigoPromocional,

@@ -1,5 +1,5 @@
-const empresasService = require(
-  "../services/empresasService",
+const registroService = require(
+  "../services/registroService",
 );
 
 function normalizarTexto(valor) {
@@ -346,6 +346,19 @@ function responderError(
 
       message: error.message,
     },
+
+    MP_NO_CONFIGURADO: {
+      status: 503,
+
+      message:
+        "El pago con Mercado Pago no está configurado.",
+    },
+
+    REGISTRO_NO_ENCONTRADO: {
+      status: 404,
+
+      message: error.message,
+    },
   };
 
   const controlado =
@@ -432,7 +445,7 @@ exports.crearEmpresa =
 
     try {
       const resultado =
-        await empresasService.crearEmpresa(
+        await registroService.iniciarRegistro(
           validacion.datos,
         );
 
@@ -442,7 +455,48 @@ exports.crearEmpresa =
           success: true,
 
           message:
-            "Empresa creada correctamente.",
+            resultado.requiere_pago
+              ? "Registro iniciado. Completá el pago para crear la empresa."
+              : "Empresa creada correctamente.",
+
+          data:
+            resultado,
+        });
+    } catch (error) {
+      return responderError(
+        res,
+        error,
+      );
+    }
+  };
+
+/*
+ * =====================================
+ * ESTADO DE REGISTRO PAGADO
+ *
+ * Público: la referencia REG-XXXX es
+ * el identificador secreto del pago.
+ * Si MP ya acreditó, materializa la
+ * empresa.
+ * =====================================
+ */
+
+exports.estadoRegistro =
+  async (
+    req,
+    res,
+  ) => {
+    try {
+      const resultado =
+        await registroService.verificarRegistro(
+          req.params
+            .referencia,
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
 
           data:
             resultado,

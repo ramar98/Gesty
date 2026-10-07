@@ -35,3 +35,23 @@ CREATE TABLE pagos_suscripcion (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT IGNORE INTO roles (nombre) VALUES ('Superadmin');
+
+CREATE TABLE pagos_registro (
+  id int NOT NULL AUTO_INCREMENT,
+  referencia varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  datos json NOT NULL,
+  meses int NOT NULL DEFAULT 1,
+  monto decimal(12,2) NOT NULL,
+  codigo_id int DEFAULT NULL,
+  mp_preference_id varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  mp_payment_id varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  estado enum('PENDIENTE','APROBADO','RECHAZADO') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'PENDIENTE',
+  empresa_id int DEFAULT NULL,
+  created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  pagado_at datetime DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_reg_referencia (referencia),
+  UNIQUE KEY uq_reg_mp_payment (mp_payment_id),
+  CONSTRAINT fk_reg_codigo FOREIGN KEY (codigo_id) REFERENCES codigos_promocionales (id),
+  CONSTRAINT fk_reg_empresa FOREIGN KEY (empresa_id) REFERENCES empresas (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
