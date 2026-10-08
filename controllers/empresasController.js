@@ -1,5 +1,5 @@
-const empresasService = require(
-  "../services/empresasService",
+const registroService = require(
+  "../services/registroService",
 );
 
 function normalizarTexto(valor) {
@@ -105,6 +105,10 @@ function validarAlta(
     errores.push(
       "El nombre de la empresa es obligatorio.",
     );
+  }
+
+  if (empresa.plan !== "BASICO") {
+    errores.push("El plan seleccionado no está disponible.");
   }
 
   if (
@@ -250,7 +254,7 @@ function validarAlta(
     );
   } else if (
     administrador.password.length >
-    72
+    72 || Buffer.byteLength(administrador.password, "utf8") > 72
   ) {
     errores.push(
       "La contraseña no puede superar los 72 caracteres.",
@@ -285,11 +289,20 @@ function validarAlta(
   };
 }
 
+exports.obtenerPlanes = (_req, res) => res.json({
+  success: true,
+  data: { plan: "BASICO", precio_mensual: require("../services/suscripcionesService").PRECIO_MENSUAL, moneda: "ARS" },
+});
+
 function responderError(
   res,
   error,
 ) {
   const erroresControlados = {
+    PAGO_INVALIDO: { status: 409, message: "El pago no corresponde a la moneda o al cobrador configurado." },
+    MP_QR_NO_CONFIGURADO: { status: 503, message: "El pago con QR no está configurado. Contactá al administrador." },
+    MP_QR_ERROR: { status: 502, message: "Mercado Pago no pudo completar la operación. Intentá nuevamente." },
+    MONTO_INVALIDO: { status: 409, message: error.message },
     ROL_ADMIN_NO_ENCONTRADO: {
       status: 500,
 
@@ -343,6 +356,19 @@ function responderError(
 
     CODIGO_TIPO_INCORRECTO: {
       status: 400,
+
+      message: error.message,
+    },
+
+    MP_NO_CONFIGURADO: {
+      status: 503,
+
+      message:
+        "El pago con Mercado Pago no está configurado.",
+    },
+
+    REGISTRO_NO_ENCONTRADO: {
+      status: 404,
 
       message: error.message,
     },
@@ -432,7 +458,7 @@ exports.crearEmpresa =
 
     try {
       const resultado =
-        await empresasService.crearEmpresa(
+        await registroService.iniciarRegistro(
           validacion.datos,
         );
 
@@ -442,7 +468,48 @@ exports.crearEmpresa =
           success: true,
 
           message:
-            "Empresa creada correctamente.",
+            resultado.requiere_pago
+              ? "Registro iniciado. Completá el pago para crear la empresa."
+              : "Empresa creada correctamente.",
+
+          data:
+            resultado,
+        });
+    } catch (error) {
+      return responderError(
+        res,
+        error,
+      );
+    }
+  };
+
+/*
+ * =====================================
+ * ESTADO DE REGISTRO PAGADO
+ *
+ * Público: la referencia REG-XXXX es
+ * el identificador secreto del pago.
+ * Si MP ya acreditó, materializa la
+ * empresa.
+ * =====================================
+ */
+
+exports.estadoRegistro =
+  async (
+    req,
+    res,
+  ) => {
+    try {
+      const resultado =
+        await registroService.verificarRegistro(
+          req.params
+            .referencia,
+        );
+
+      return res
+        .status(200)
+        .json({
+          success: true,
 
           data:
             resultado,

@@ -79,6 +79,14 @@ router.post(
 */
 
 router.get(
+  "/metricas",
+  autorizarRoles(
+    "SUPERADMIN",
+  ),
+  controller.obtenerMetricas,
+);
+
+router.get(
   "/empresas",
   autorizarRoles(
     "SUPERADMIN",

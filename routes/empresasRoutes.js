@@ -25,4 +25,17 @@ router.post(
   empresasController.crearEmpresa,
 );
 
+router.get("/planes", empresasController.obtenerPlanes);
+
+/*
+ * Consulta del estado de un alta
+ * pendiente de pago. Si MP ya la
+ * acreditó, materializa la empresa.
+ */
+
+router.get(
+  "/registro/:referencia",
+  empresasController.estadoRegistro,
+);
+
 module.exports = router;

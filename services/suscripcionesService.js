@@ -17,6 +17,10 @@ const TRIAL_DIAS = Number(
     0,
 );
 
+if (!Number.isFinite(PRECIO_MENSUAL) || PRECIO_MENSUAL <= 0) {
+  throw new Error("PRECIO_SUSCRIPCION_MENSUAL debe ser un importe positivo.");
+}
+
 /*
  * =====================================
  * ESTADO DE SUSCRIPCIÓN
@@ -75,7 +79,7 @@ const obtenerEstado = async (
 
   return {
     activa:
-      Boolean(vence) &&
+      Boolean(empresa.activo) && Boolean(vence) &&
       vence > ahora,
     suscripcion_vence: vence,
     dias_restantes:
@@ -110,6 +114,7 @@ const estaAlDia = async (
 
       WHERE
         id = ?
+        AND activo = TRUE
         AND suscripcion_vence
           IS NOT NULL
         AND suscripcion_vence
@@ -266,6 +271,8 @@ const listarEmpresas = async () => {
 
       FROM empresas e
 
+      WHERE e.plan <> 'INTERNA'
+
       ORDER BY
         e.created_at DESC
     `,
@@ -285,10 +292,142 @@ const listarEmpresas = async () => {
       ...empresa,
 
       suscripcion_activa:
-        Boolean(vence) &&
+        Boolean(empresa.activo) && Boolean(vence) &&
         vence > ahora,
     };
   });
+};
+
+/*
+ * =====================================
+ * MÉTRICAS DE PLATAFORMA (SUPERADMIN)
+ *
+ * Indicadores globales para el
+ * dashboard del superadmin: no es un
+ * negocio, es el panel de control de
+ * la plataforma.
+ * =====================================
+ */
+
+const obtenerMetricas = async () => {
+  const [empresas] = await db.query(
+    `
+      SELECT
+        COUNT(*) AS total,
+
+        SUM(
+          activo = TRUE AND suscripcion_vence IS NOT NULL
+          AND suscripcion_vence > NOW()
+        ) AS activas,
+
+        SUM(
+          activo = FALSE OR suscripcion_vence IS NULL
+          OR suscripcion_vence <= NOW()
+        ) AS vencidas,
+
+        SUM(
+          created_at >= NOW() - INTERVAL 30 DAY
+        ) AS altas_30d
+
+      FROM empresas
+
+      WHERE plan <> 'INTERNA'
+    `,
+  );
+
+  const [recaudacion] = await db.query(
+    `
+      SELECT
+        COALESCE(SUM(monto), 0) AS total,
+
+        COALESCE(
+          SUM(
+            CASE
+              WHEN pagado_at >=
+                DATE_FORMAT(
+                  NOW(), '%Y-%m-01'
+                )
+                THEN monto
+              ELSE 0
+            END
+          ),
+          0
+        ) AS del_mes
+
+      FROM (
+        SELECT monto, pagado_at
+        FROM pagos_suscripcion
+        WHERE estado = 'APROBADO'
+
+        UNION ALL
+
+        SELECT monto, pagado_at
+        FROM pagos_registro
+        WHERE estado = 'APROBADO'
+      ) pagos
+    `,
+  );
+
+  const [pendientes] = await db.query(
+    `
+      SELECT
+        (
+          SELECT COUNT(*)
+          FROM pagos_registro
+          WHERE estado = 'PENDIENTE'
+        ) AS registros_pendientes,
+
+        (
+          SELECT COUNT(*)
+          FROM pagos_suscripcion
+          WHERE estado = 'PENDIENTE'
+        ) AS suscripciones_pendientes
+    `,
+  );
+
+  const [codigos] = await db.query(
+    `
+      SELECT COUNT(*) AS activos
+
+      FROM codigos_promocionales
+
+      WHERE
+        activo = 1
+        AND usos < usos_maximos
+        AND (expira_en IS NULL OR expira_en > NOW())
+    `,
+  );
+
+  const [ultimas] = await db.query(
+    `
+      SELECT
+        id,
+        activo,
+        nombre,
+        plan,
+        suscripcion_vence,
+        created_at
+
+      FROM empresas
+
+      WHERE plan <> 'INTERNA'
+
+      ORDER BY created_at DESC
+
+      LIMIT 5
+    `,
+  );
+
+  return {
+    empresas: empresas[0],
+    recaudacion: recaudacion[0],
+    pendientes: pendientes[0],
+    codigos_activos:
+      Number(
+        codigos[0]?.activos ?? 0,
+      ),
+    ultimas_empresas: ultimas,
+  };
 };
 
 module.exports = {
@@ -298,4 +437,5 @@ module.exports = {
   extender,
   aplicarVencimientoInicial,
   listarEmpresas,
+  obtenerMetricas,
 };

@@ -120,6 +120,14 @@ const crearCodigo = async ({
     normalizarCodigo(codigo) ||
     generarCodigo();
 
+  if (codigoFinal.length > 50) {
+    throw Object.assign(new Error("El código no puede superar los 50 caracteres."), { code: "CODIGO_INVALIDO" });
+  }
+  const vencimiento = expira_en ? new Date(expira_en) : null;
+  if (vencimiento && (!Number.isFinite(vencimiento.getTime()) || vencimiento <= new Date())) {
+    throw Object.assign(new Error("La fecha de vencimiento debe ser válida y futura."), { code: "FECHA_INVALIDA" });
+  }
+
   const [result] = await db.query(
     `
       INSERT INTO codigos_promocionales
@@ -145,7 +153,8 @@ const crearCodigo = async ({
         ? porcentaje
         : null,
       usosMaximos,
-      expira_en || null,
+      // mysql2 serializa Date al formato de DATETIME; no enviar el ISO con Z como texto.
+      vencimiento,
     ],
   );
 
@@ -278,6 +287,7 @@ const consumirCodigo = async (
           id = ?
           AND activo = TRUE
           AND usos < usos_maximos
+          AND (expira_en IS NULL OR expira_en > NOW())
       `,
       [codigoId],
     );

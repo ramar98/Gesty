@@ -30,6 +30,11 @@ function obtenerEmpresaId(req) {
 
 function responderError(res, error) {
   const erroresControlados = {
+    PAGO_INVALIDO: { status: 400, message: error.message },
+    PAGO_NO_ENCONTRADO: { status: 404, message: error.message },
+    MP_QR_NO_CONFIGURADO: { status: 503, message: "El pago con QR no está configurado. Contactá al administrador." },
+    MP_QR_ERROR: { status: 502, message: "Mercado Pago no pudo completar la operación. Intentá nuevamente." },
+    MONTO_INVALIDO: { status: 409, message: error.message },
     EMPRESA_NO_ENCONTRADA: {
       status: 404,
       message:
@@ -226,6 +231,7 @@ exports.verificarPago = async (
     const resultado =
       await pagosService.verificarPagoPendiente(
         empresaId,
+        req.body?.pago_id ?? null,
       );
 
     const estado =
@@ -351,6 +357,30 @@ exports.webhook = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+    });
+  } catch (error) {
+    return responderError(res, error);
+  }
+};
+
+/*
+ * ===================================
+ * SUPERADMIN: MÉTRICAS PLATAFORMA
+ * ===================================
+ */
+
+exports.obtenerMetricas = async (
+  req,
+  res,
+) => {
+  try {
+    const metricas =
+      await suscripcionesService.obtenerMetricas();
+
+    return res.status(200).json({
+      success: true,
+
+      data: metricas,
     });
   } catch (error) {
     return responderError(res, error);

@@ -17,7 +17,6 @@ const codigosService = require(
  * =====================================
  */
 
-let preferenceClient = null;
 let paymentClient = null;
 
 function obtenerClientes() {
@@ -32,31 +31,34 @@ function obtenerClientes() {
     throw error;
   }
 
-  if (!preferenceClient) {
+  if (!paymentClient) {
     const {
       MercadoPagoConfig,
-      Preference,
       Payment,
     } = require("mercadopago");
 
     const config =
       new MercadoPagoConfig({
+        options: { timeout: 10000 },
         accessToken:
           process.env.MP_ACCESS_TOKEN,
       });
-
-    preferenceClient =
-      new Preference(config);
 
     paymentClient = new Payment(
       config,
     );
   }
 
-  return {
-    preferenceClient,
-    paymentClient,
-  };
+  return { paymentClient };
+}
+
+function validarPagoMp(pago) {
+  if (pago.status === "approved" &&
+      (pago.currency_id !== "ARS" ||
+       (process.env.MP_COLLECTOR_ID && String(pago.collector_id) !== String(process.env.MP_COLLECTOR_ID)))) {
+    throw Object.assign(new Error("El pago no corresponde a la moneda o al cobrador configurado."), { code: "PAGO_INVALIDO" });
+  }
+  return pago;
 }
 
 /*
@@ -115,10 +117,11 @@ function verificarFirmaWebhook(req) {
   const dataId = String(
     req.query?.["data.id"] ??
       req.query?.id ??
+      req.body?.data?.id ??
       "",
   ).toLowerCase();
 
-  if (!ts || !v1 || !dataId) {
+  if (!ts || !/^[a-fA-F0-9]{64}$/.test(v1 ?? "") || !dataId) {
     return false;
   }
 
@@ -131,8 +134,8 @@ function verificarFirmaWebhook(req) {
     .digest("hex");
 
   return crypto.timingSafeEqual(
-    Buffer.from(firma),
-    Buffer.from(String(v1)),
+    Buffer.from(firma, "hex"),
+    Buffer.from(String(v1), "hex"),
   );
 }
 
@@ -239,14 +242,98 @@ const crearPago = async (
 
   /*
    * =================================
-   * PREFERENCIA MERCADO PAGO
+   * ORDEN QR MERCADO PAGO
+   *
+   * El cliente paga escaneando el QR
+   * con su app, sin salir de la
+   * pantalla de suscripción.
    * =================================
    */
 
-  const frontendUrl = String(
-    process.env.FRONTEND_URL ||
-      "http://localhost:5173",
-  ).replace(/\/+$/, "");
+  if (monto === 0) {
+    await registrarPagoAprobado(pagoId, `GRATIS-${pagoId}`, "approved", 0);
+    return { pago_id: pagoId, monto, meses: mesesEntero, gratis: true };
+  }
+
+  let orden;
+  try {
+    orden = await crearOrdenQr({
+      referencia: String(pagoId),
+      titulo: `Gesty - Suscripción (${mesesEntero} mes${mesesEntero > 1 ? "es" : ""})`,
+      monto,
+    });
+  } catch (error) {
+    await db.query("UPDATE pagos_suscripcion SET estado = 'RECHAZADO' WHERE id = ? AND estado = 'PENDIENTE'", [pagoId]);
+    throw error;
+  }
+
+  await db.query(
+    `
+      UPDATE pagos_suscripcion
+
+      SET mp_preference_id = ?
+
+      WHERE id = ?
+    `,
+    [orden.orden_id, pagoId],
+  );
+
+  return {
+    pago_id: pagoId,
+    monto,
+    meses: mesesEntero,
+    qr_imagen: orden.qr_imagen,
+    expira_en: orden.expira_en,
+  };
+};
+
+/*
+ * =====================================
+ * ORDEN QR PARA REGISTRO
+ *
+ * Alta de empresa (referencia
+ * REG-XXXX): genera una orden en el
+ * QR dinámico de MP (API instore) y
+ * devuelve el qr_data listo para
+ * renderizar en nuestra propia
+ * pantalla de pago. El cliente paga
+ * escaneando con su app de MP.
+ *
+ * Requiere:
+ *   MP_COLLECTOR_ID    (id de usuario
+ *                       cobrador)
+ *   MP_POS_EXTERNAL_ID (caja/POS)
+ * =====================================
+ */
+
+const crearOrdenQr = async ({
+  referencia,
+  titulo,
+  monto,
+}) => {
+  const collectorId =
+    process.env.MP_COLLECTOR_ID;
+
+  const posExternalId =
+    process.env.MP_POS_EXTERNAL_ID;
+
+  const token =
+    process.env.MP_ACCESS_TOKEN;
+
+  if (
+    !collectorId ||
+    !posExternalId ||
+    !token
+  ) {
+    const error = new Error(
+      "El pago con QR no está configurado (faltan MP_COLLECTOR_ID / MP_POS_EXTERNAL_ID).",
+    );
+
+    error.code =
+      "MP_QR_NO_CONFIGURADO";
+
+    throw error;
+  }
 
   const apiUrl = String(
     process.env.API_PUBLIC_URL ||
@@ -254,28 +341,21 @@ const crearPago = async (
   ).replace(/\/+$/, "");
 
   const body = {
+    expiration_date: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    external_reference: referencia,
+    title: titulo,
+    description: titulo,
+    total_amount: monto,
     items: [
       {
-        id: "suscripcion-gesty",
-        title: `Gesty - Suscripción (${mesesEntero} mes${
-          mesesEntero > 1 ? "es" : ""
-        })`,
+        title: titulo,
+        description: titulo,
         quantity: 1,
         unit_price: monto,
-        currency_id: "ARS",
+        unit_measure: "unit",
+        total_amount: monto,
       },
     ],
-
-    external_reference:
-      String(pagoId),
-
-    back_urls: {
-      success: `${frontendUrl}/suscripcion?resultado=exito`,
-      pending: `${frontendUrl}/suscripcion?resultado=pendiente`,
-      failure: `${frontendUrl}/suscripcion?resultado=error`,
-    },
-
-    auto_return: "approved",
   };
 
   /*
@@ -289,33 +369,55 @@ const crearPago = async (
       `${apiUrl}/api/suscripcion/webhook`;
   }
 
-  const { preferenceClient } =
-    obtenerClientes();
+  const respuesta = await fetch(
+    `https://api.mercadopago.com/instore/orders/qr/seller/collectors/${collectorId}/pos/${posExternalId}/qrs`,
+    {
+      // POST genera un QR independiente; PUT reemplaza la orden de la caja.
+      method: "POST",
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify(body),
+    },
+  ).catch((error) => { throw Object.assign(error, { code: "MP_QR_ERROR" }); });
 
-  const preferencia =
-    await preferenceClient.create({
-      body,
-    });
+  const datos = await respuesta.json().catch(() => {
+    throw Object.assign(new Error("Mercado Pago devolvió una respuesta inválida."), { code: "MP_QR_ERROR" });
+  });
 
-  await db.query(
-    `
-      UPDATE pagos_suscripcion
+  if (!respuesta.ok) {
+    const error = new Error(
+      datos?.message ||
+        "Mercado Pago no pudo generar el QR.",
+    );
 
-      SET mp_preference_id = ?
+    error.code = "MP_QR_ERROR";
 
-      WHERE id = ?
-    `,
-    [preferencia.id, pagoId],
-  );
+    throw error;
+  }
+
+  const QRCode = require("qrcode");
+
+  if (!datos.qr_data || !datos.in_store_order_id) {
+    throw Object.assign(new Error("Mercado Pago no devolvió un QR válido."), { code: "MP_QR_ERROR" });
+  }
+
+  const qrImagen =
+    await QRCode.toDataURL(
+      datos.qr_data,
+      { width: 300, margin: 1 },
+    );
 
   return {
-    pago_id: pagoId,
-    monto,
-    meses: mesesEntero,
-    init_point:
-      preferencia.init_point,
-    sandbox_init_point:
-      preferencia.sandbox_init_point,
+    expira_en: body.expiration_date,
+    orden_id:
+      datos.in_store_order_id,
+    qr_data: datos.qr_data,
+    qr_imagen: qrImagen,
   };
 };
 
@@ -378,7 +480,7 @@ const buscarPagoPorReferencia = async (
     return null;
   }
 
-  return (
+  return validarPagoMp(
     coincidentes.find(
       (pago) =>
         pago.status === "approved",
@@ -398,34 +500,42 @@ const buscarPagoPorReferencia = async (
 
 const verificarPagoPendiente = async (
   empresaId,
+  pagoId = null,
 ) => {
+  if (pagoId !== null && (!Number.isSafeInteger(Number(pagoId)) || Number(pagoId) <= 0)) {
+    throw Object.assign(new Error("El identificador del pago no es válido."), { code: "PAGO_INVALIDO" });
+  }
   const [pendientes] = await db.query(
     `
       SELECT
         id,
         monto,
         meses
+        , estado
 
       FROM pagos_suscripcion
 
       WHERE
         empresa_id = ?
-        AND estado = 'PENDIENTE'
+        AND (? IS NULL AND estado = 'PENDIENTE' OR id = ?)
 
       ORDER BY id DESC
 
       LIMIT 1
     `,
-    [empresaId],
+    [empresaId, pagoId, pagoId],
   );
 
   const pendiente = pendientes[0];
 
   if (!pendiente) {
+    if (pagoId !== null) throw Object.assign(new Error("El pago no existe para esta empresa."), { code: "PAGO_NO_ENCONTRADO" });
     return {
       pendiente: false,
     };
   }
+
+  if (pendiente.estado === "APROBADO") return { pendiente: false, estado: "APROBADO", pago_id: pendiente.id };
 
   const pagoMp =
     await buscarPagoPorReferencia(
@@ -451,6 +561,7 @@ const verificarPagoPendiente = async (
 
   return {
     pendiente: true,
+    pago_id: pendiente.id,
     ...resultado,
   };
 };
@@ -502,7 +613,7 @@ const registrarPagoAprobado = async (
 
           WHERE
             id = ?
-            AND estado = 'PENDIENTE'
+            AND estado <> 'APROBADO'
         `,
         [
           estadoFinal,
@@ -520,9 +631,8 @@ const registrarPagoAprobado = async (
     if (updateResult.affectedRows === 0) {
       await connection.commit();
 
-      return {
-        procesado: false,
-      };
+      const [rows] = await connection.query("SELECT estado FROM pagos_suscripcion WHERE id = ?", [pagoId]);
+      return { procesado: false, estado: rows[0]?.estado };
     }
 
     if (estadoFinal === "APROBADO") {
@@ -548,15 +658,11 @@ const registrarPagoAprobado = async (
 
       if (
         pago &&
-        montoMp !== null &&
-        Number.isFinite(montoMp) &&
-        Math.abs(
-          Number(pago.monto) - montoMp,
-        ) > 0.01
+        (!Number.isFinite(montoMp) || Math.round(Number(pago.monto) * 100) !== Math.round(montoMp * 100))
       ) {
-        throw new Error(
+        throw Object.assign(new Error(
           `El monto del pago no coincide: esperado ${pago.monto}, recibido ${montoMp}.`,
-        );
+        ), { code: "MONTO_INVALIDO" });
       }
 
       if (pago) {
@@ -615,18 +721,32 @@ const procesarWebhook = async (
     req.query?.topic ??
     req.body?.type;
 
-  const paymentId =
+  const dataId =
     req.query?.["data.id"] ??
     req.query?.id ??
     req.body?.data?.id;
 
+  /*
+   * Pagos por QR notifican una
+   * merchant_order: traemos la orden
+   * y procesamos cada pago asociado.
+   */
+
+  if (
+    tipo === "merchant_order" &&
+    dataId
+  ) {
+    return procesarOrdenQr(
+      String(dataId),
+    );
+  }
+
   if (
     tipo !== "payment" ||
-    !paymentId
+    !dataId
   ) {
     /*
-     * Otros eventos (merchant_order,
-     * etc.) los ignoramos.
+     * Otros eventos los ignoramos.
      */
     return {
       procesado: false,
@@ -638,12 +758,36 @@ const procesarWebhook = async (
 
   const pagoMp =
     await paymentClient.get({
-      id: String(paymentId),
+      id: String(dataId),
     });
+  validarPagoMp(pagoMp);
 
-  const pagoId = Number(
-    pagoMp.external_reference,
+  const referencia = String(
+    pagoMp.external_reference ?? "",
   );
+
+  /*
+   * Pagos de alta de empresa
+   * (referencia REG-XXXX): los crea
+   * empresa al acreditarse.
+   */
+
+  if (referencia.startsWith("REG-")) {
+    const registroService = require(
+      "./registroService",
+    );
+
+    return registroService.confirmarRegistro(
+      referencia,
+      pagoMp.id,
+      pagoMp.status,
+      Number(
+        pagoMp.transaction_amount,
+      ),
+    );
+  }
+
+  const pagoId = Number(referencia);
 
   if (!pagoId) {
     return {
@@ -661,9 +805,105 @@ const procesarWebhook = async (
   );
 };
 
+/*
+ * =====================================
+ * ORDEN QR (merchant_order)
+ *
+ * Los pagos hechos escaneando el QR
+ * llegan como notificación de orden,
+ * no de pago. Traemos la orden y
+ * procesamos cada pago aprobado.
+ * =====================================
+ */
+
+const procesarOrdenQr = async (
+  ordenId,
+) => {
+  const token =
+    process.env.MP_ACCESS_TOKEN;
+
+  const respuesta = await fetch(
+    `https://api.mercadopago.com/merchant_orders/${ordenId}`,
+    {
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+      },
+    },
+  );
+
+  const orden =
+    await respuesta.json();
+
+  if (!respuesta.ok) {
+    throw Object.assign(new Error("No se pudo consultar la orden en Mercado Pago."), { code: "MP_QR_ERROR" });
+  }
+
+  const resultados = [];
+
+  const { paymentClient } =
+    obtenerClientes();
+
+  for (const pago of orden.payments ??
+    []) {
+    const pagoMp =
+      await paymentClient.get({
+        id: String(pago.id),
+      });
+    validarPagoMp(pagoMp);
+
+    const referencia = String(
+      pagoMp.external_reference ?? "",
+    );
+
+    if (
+      referencia.startsWith("REG-")
+    ) {
+      const registroService = require(
+        "./registroService",
+      );
+
+      resultados.push(
+        await registroService.confirmarRegistro(
+          referencia,
+          pagoMp.id,
+          pagoMp.status,
+          Number(
+            pagoMp.transaction_amount,
+          ),
+        ),
+      );
+    } else {
+      const pagoId =
+        Number(referencia);
+
+      if (pagoId) {
+        resultados.push(
+          await registrarPagoAprobado(
+            pagoId,
+            pagoMp.id,
+            pagoMp.status,
+            Number(
+              pagoMp.transaction_amount,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  return {
+    procesado:
+      resultados.length > 0,
+  };
+};
+
 module.exports = {
   crearPago,
+  crearOrdenQr,
   procesarWebhook,
   verificarPagoPendiente,
   buscarPagoPorReferencia,
+  registrarPagoAprobado,
 };

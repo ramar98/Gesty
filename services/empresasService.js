@@ -58,12 +58,13 @@ const crearEmpresa = async ({
   empresa,
   administrador,
   codigoPromocional,
-}) => {
+  mesesPagados,
+}, connectionExterna = null) => {
   const connection =
-    await db.getConnection();
+    connectionExterna ?? await db.getConnection();
 
   try {
-    await connection.beginTransaction();
+    if (!connectionExterna) await connection.beginTransaction();
 
     /*
      * =================================
@@ -180,10 +181,11 @@ const crearEmpresa = async ({
      */
 
     const passwordHash =
-      await bcrypt.hash(
+      administrador.passwordHash ??
+      (await bcrypt.hash(
         administrador.password,
         12,
-      );
+      ));
 
     /*
      * =================================
@@ -273,6 +275,9 @@ const crearEmpresa = async ({
      * =================================
      * SUSCRIPCIÓN INICIAL
      *
+     * mesesPagados: la empresa se creó
+     * después de un pago acreditado.
+     *
      * Con código MESES_GRATIS arranca
      * con meses gratis; si no hay
      * código aplica el trial
@@ -281,7 +286,16 @@ const crearEmpresa = async ({
      * =================================
      */
 
-    if (codigoPromocional) {
+    if (
+      Number.isInteger(mesesPagados) &&
+      mesesPagados > 0
+    ) {
+      await suscripcionesService.extender(
+        empresaId,
+        mesesPagados,
+        connection,
+      );
+    } else if (codigoPromocional) {
       const codigo =
         await codigosService.validarCodigo(
           codigoPromocional,
@@ -323,7 +337,7 @@ const crearEmpresa = async ({
      * =================================
      */
 
-    await connection.commit();
+    if (!connectionExterna) await connection.commit();
 
     /*
      * =================================
@@ -369,11 +383,11 @@ const crearEmpresa = async ({
       },
     };
   } catch (error) {
-    await connection.rollback();
+    if (!connectionExterna) await connection.rollback();
 
     throw error;
   } finally {
-    connection.release();
+    if (!connectionExterna) connection.release();
   }
 };
 
