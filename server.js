@@ -153,7 +153,7 @@ app.use(
 const origenesPermitidos =
   (
     process.env.CORS_ORIGINS ||
-    "https://app.gesty.msoftware.com.ar,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
+    "https://app.gesty.rrsoftware.com.ar,http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173"
   )
     .split(",")
     .map((origen) =>
