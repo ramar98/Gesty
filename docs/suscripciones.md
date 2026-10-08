@@ -20,6 +20,16 @@ La integración mantiene la API Dynamic QR existente; no migra a Orders API ni c
 
 ## Validación
 
+### Migrar una base existente
+
+Guardar la conexión pública del MySQL de Railway en `.env.railway` (ignorado por Git), con `MYSQL_PUBLIC_URL` o las variables `DB_*`. Este archivo debe corresponder a la base del backend de pruebas.
+
+También se puede indicar `--env .env` si sus variables `DB_*` apuntan a la base remota. Para ejecutar desde una PC, usar el host y puerto públicos del TCP Proxy; `mysql.railway.internal` solo es accesible dentro de Railway. Mantener comentadas las variables locales para evitar conexiones al destino equivocado.
+
+Ejecutar primero `node scripts/migrarSuscripciones.js --env .env.railway` para inspeccionar. Agregar `--aplicar` para ejecutar el plan. El script agrega solo las tablas, columna y rol que falten, guarda el esquema anterior en `database/schema-backups/` y verifica el resultado. No importa el dump ni copia datos locales. Si una tabla existente tiene columnas faltantes, se detiene para revisar esa diferencia antes de cambiarla. MySQL no revierte DDL mediante una transacción; los pasos son aditivos y se pueden reanudar.
+
+Las pruebas contra una base local requieren `--permitir-local` explícito.
+
 Ejecutar `npm test`. Las pruebas usan dobles de MySQL y Mercado Pago: no crean empresas reales ni cobran dinero. Cubren montos incorrectos/ausentes, concurrencia, rollback, recuperación de rechazos, firmas, QR independiente, pertenencia del pago y descuentos del 100%.
 
 Para una prueba de integración, usar una base de pruebas y las cuentas de prueba de Mercado Pago. Comprobar alta pagada, renovación con vigencia, canje, descuento, webhook duplicado y verificación posterior al webhook. Las pruebas automatizadas locales no reemplazan la validación con MySQL y Mercado Pago reales.

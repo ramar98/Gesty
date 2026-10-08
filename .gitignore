@@ -4,6 +4,7 @@ node_modules/
 npm-debug.log*
 # Dumps de base de datos con datos reales
 database/dump*.sql
+database/schema-backups/
 
 # Plantilla documentada de variables
 !.env.example
