@@ -17,6 +17,10 @@ const TRIAL_DIAS = Number(
     0,
 );
 
+if (!Number.isFinite(PRECIO_MENSUAL) || PRECIO_MENSUAL <= 0) {
+  throw new Error("PRECIO_SUSCRIPCION_MENSUAL debe ser un importe positivo.");
+}
+
 /*
  * =====================================
  * ESTADO DE SUSCRIPCIÓN
@@ -75,7 +79,7 @@ const obtenerEstado = async (
 
   return {
     activa:
-      Boolean(vence) &&
+      Boolean(empresa.activo) && Boolean(vence) &&
       vence > ahora,
     suscripcion_vence: vence,
     dias_restantes:
@@ -110,6 +114,7 @@ const estaAlDia = async (
 
       WHERE
         id = ?
+        AND activo = TRUE
         AND suscripcion_vence
           IS NOT NULL
         AND suscripcion_vence
@@ -266,6 +271,8 @@ const listarEmpresas = async () => {
 
       FROM empresas e
 
+      WHERE e.plan <> 'INTERNA'
+
       ORDER BY
         e.created_at DESC
     `,
@@ -285,7 +292,7 @@ const listarEmpresas = async () => {
       ...empresa,
 
       suscripcion_activa:
-        Boolean(vence) &&
+        Boolean(empresa.activo) && Boolean(vence) &&
         vence > ahora,
     };
   });
@@ -309,12 +316,12 @@ const obtenerMetricas = async () => {
         COUNT(*) AS total,
 
         SUM(
-          suscripcion_vence IS NOT NULL
+          activo = TRUE AND suscripcion_vence IS NOT NULL
           AND suscripcion_vence > NOW()
         ) AS activas,
 
         SUM(
-          suscripcion_vence IS NULL
+          activo = FALSE OR suscripcion_vence IS NULL
           OR suscripcion_vence <= NOW()
         ) AS vencidas,
 
@@ -387,12 +394,15 @@ const obtenerMetricas = async () => {
       WHERE
         activo = 1
         AND usos < usos_maximos
+        AND (expira_en IS NULL OR expira_en > NOW())
     `,
   );
 
   const [ultimas] = await db.query(
     `
       SELECT
+        id,
+        activo,
         nombre,
         plan,
         suscripcion_vence,

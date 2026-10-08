@@ -107,6 +107,10 @@ function validarAlta(
     );
   }
 
+  if (empresa.plan !== "BASICO") {
+    errores.push("El plan seleccionado no está disponible.");
+  }
+
   if (
     empresa.nombre.length > 150
   ) {
@@ -250,7 +254,7 @@ function validarAlta(
     );
   } else if (
     administrador.password.length >
-    72
+    72 || Buffer.byteLength(administrador.password, "utf8") > 72
   ) {
     errores.push(
       "La contraseña no puede superar los 72 caracteres.",
@@ -285,11 +289,20 @@ function validarAlta(
   };
 }
 
+exports.obtenerPlanes = (_req, res) => res.json({
+  success: true,
+  data: { plan: "BASICO", precio_mensual: require("../services/suscripcionesService").PRECIO_MENSUAL, moneda: "ARS" },
+});
+
 function responderError(
   res,
   error,
 ) {
   const erroresControlados = {
+    PAGO_INVALIDO: { status: 409, message: "El pago no corresponde a la moneda o al cobrador configurado." },
+    MP_QR_NO_CONFIGURADO: { status: 503, message: "El pago con QR no está configurado. Contactá al administrador." },
+    MP_QR_ERROR: { status: 502, message: "Mercado Pago no pudo completar la operación. Intentá nuevamente." },
+    MONTO_INVALIDO: { status: 409, message: error.message },
     ROL_ADMIN_NO_ENCONTRADO: {
       status: 500,
 

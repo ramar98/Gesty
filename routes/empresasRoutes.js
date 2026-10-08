@@ -25,6 +25,8 @@ router.post(
   empresasController.crearEmpresa,
 );
 
+router.get("/planes", empresasController.obtenerPlanes);
+
 /*
  * Consulta del estado de un alta
  * pendiente de pago. Si MP ya la

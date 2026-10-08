@@ -59,12 +59,12 @@ const crearEmpresa = async ({
   administrador,
   codigoPromocional,
   mesesPagados,
-}) => {
+}, connectionExterna = null) => {
   const connection =
-    await db.getConnection();
+    connectionExterna ?? await db.getConnection();
 
   try {
-    await connection.beginTransaction();
+    if (!connectionExterna) await connection.beginTransaction();
 
     /*
      * =================================
@@ -337,7 +337,7 @@ const crearEmpresa = async ({
      * =================================
      */
 
-    await connection.commit();
+    if (!connectionExterna) await connection.commit();
 
     /*
      * =================================
@@ -383,11 +383,11 @@ const crearEmpresa = async ({
       },
     };
   } catch (error) {
-    await connection.rollback();
+    if (!connectionExterna) await connection.rollback();
 
     throw error;
   } finally {
-    connection.release();
+    if (!connectionExterna) connection.release();
   }
 };
 

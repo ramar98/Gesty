@@ -4,6 +4,8 @@ const codigosService = require(
 
 function responderError(res, error) {
   const erroresControlados = {
+    CODIGO_INVALIDO: { status: 400, message: error.message },
+    FECHA_INVALIDA: { status: 400, message: error.message },
     TIPO_INVALIDO: {
       status: 400,
       message: error.message,
