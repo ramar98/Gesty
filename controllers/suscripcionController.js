@@ -359,6 +359,30 @@ exports.webhook = async (req, res) => {
 
 /*
  * ===================================
+ * SUPERADMIN: MÉTRICAS PLATAFORMA
+ * ===================================
+ */
+
+exports.obtenerMetricas = async (
+  req,
+  res,
+) => {
+  try {
+    const metricas =
+      await suscripcionesService.obtenerMetricas();
+
+    return res.status(200).json({
+      success: true,
+
+      data: metricas,
+    });
+  } catch (error) {
+    return responderError(res, error);
+  }
+};
+
+/*
+ * ===================================
  * SUPERADMIN: LISTAR EMPRESAS
  * ===================================
  */

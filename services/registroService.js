@@ -27,8 +27,9 @@ const suscripcionesService = require(
  *   1. POST /api/empresas valida los
  *      datos y crea un pago pendiente
  *      con referencia REG-XXXX.
- *   2. El usuario paga en Mercado Pago
- *      (QR/tarjeta/saldo).
+ *   2. El usuario paga escaneando el
+ *      QR de Mercado Pago que se
+ *      muestra en la propia pantalla.
  *   3. El webhook o GET /registro/:ref
  *      confirman el pago y recién ahí
  *      se crean empresa + admin.
@@ -63,39 +64,34 @@ const iniciarRegistro = async (datos) => {
       await codigosService.validarCodigo(
         codigoPromocional,
       );
-
-    /*
-     * Código de meses gratis: el alta
-     * es directa, sin pago.
-     */
-
-    if (
-      codigoRegistro.tipo ===
-      "MESES_GRATIS"
-    ) {
-      const resultado =
-        await empresasService.crearEmpresa(
-          datos,
-        );
-
-      return {
-        requiere_pago: false,
-        ...resultado,
-      };
-    }
   }
 
   /*
    * =================================
-   * REGISTRO PAGO (1 mes inicial)
+   * REGISTRO PAGO
+   *
+   * Todo alta pasa por el pago: el
+   * código solo cambia el precio.
+   *
+   * DESCUENTO: rebaja el % del monto.
+   * MESES_GRATIS: descuento del 100%
+   * (queda en $0 y se acredita solo,
+   * con los meses gratis del código).
    * =================================
    */
 
-  const meses = 1;
+  const esGratis =
+    codigoRegistro?.tipo ===
+    "MESES_GRATIS";
 
-  const descuento =
-    codigoRegistro &&
-    codigoRegistro.tipo === "DESCUENTO"
+  const meses = esGratis
+    ? codigoRegistro.meses_gratis
+    : 1;
+
+  const descuento = esGratis
+    ? 1
+    : codigoRegistro?.tipo ===
+        "DESCUENTO"
       ? Number(
           codigoRegistro.descuento_porcentaje,
         ) / 100
@@ -160,14 +156,67 @@ const iniciarRegistro = async (datos) => {
     ],
   );
 
-  const preferencia =
-    await pagosService.crearPreferenciaRegistro(
-      {
+  /*
+   * Código de meses gratis: el monto
+   * quedó en $0 — se acredita solo y
+   * se materializa la empresa sin
+   * pasar por Mercado Pago.
+   */
+
+  if (monto <= 0) {
+    await db.query(
+      `
+        UPDATE pagos_registro
+
+        SET
+          estado = 'APROBADO',
+          pagado_at = NOW()
+
+        WHERE referencia = ?
+      `,
+      [referencia],
+    );
+
+    await materializarEmpresa(
+      referencia,
+    );
+
+    return {
+      requiere_pago: true,
+
+      pago: {
         referencia,
         monto,
+        monto_original:
+          Math.round(
+            suscripcionesService.PRECIO_MENSUAL *
+              meses *
+              100,
+          ) / 100,
+        codigo:
+          codigoRegistro?.codigo ??
+          null,
         meses,
+        gratis: true,
       },
-    );
+    };
+  }
+
+  /*
+   * Orden QR de Mercado Pago: el
+   * cliente escanea y paga desde su
+   * app, sin salir de nuestra
+   * pantalla de pago.
+   */
+
+  const orden =
+    await pagosService.crearOrdenQr({
+      referencia,
+      titulo: `Gesty - Alta de empresa (${meses} mes${
+        meses > 1 ? "es" : ""
+      })`,
+      monto,
+    });
 
   await db.query(
     `
@@ -177,7 +226,7 @@ const iniciarRegistro = async (datos) => {
 
       WHERE referencia = ?
     `,
-    [preferencia.id, referencia],
+    [orden.orden_id, referencia],
   );
 
   return {
@@ -186,11 +235,18 @@ const iniciarRegistro = async (datos) => {
     pago: {
       referencia,
       monto,
+      monto_original:
+        Math.round(
+          suscripcionesService.PRECIO_MENSUAL *
+            meses *
+            100,
+        ) / 100,
+      codigo:
+        codigoRegistro?.codigo ??
+        null,
       meses,
-      init_point:
-        preferencia.init_point,
-      sandbox_init_point:
-        preferencia.sandbox_init_point,
+      qr_imagen:
+        orden.qr_imagen,
     },
   };
 };
@@ -452,6 +508,18 @@ const verificarRegistro = async (
     return {
       creada: true,
     };
+  }
+
+  /*
+   * Aprobada pero sin materializar
+   * (p.ej. falló la creación al
+   * iniciar): reintentamos.
+   */
+
+  if (registro.estado === "APROBADO") {
+    return materializarEmpresa(
+      referencia,
+    );
   }
 
   const pagoMp =

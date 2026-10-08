@@ -17,7 +17,6 @@ const codigosService = require(
  * =====================================
  */
 
-let preferenceClient = null;
 let paymentClient = null;
 
 function obtenerClientes() {
@@ -32,10 +31,9 @@ function obtenerClientes() {
     throw error;
   }
 
-  if (!preferenceClient) {
+  if (!paymentClient) {
     const {
       MercadoPagoConfig,
-      Preference,
       Payment,
     } = require("mercadopago");
 
@@ -45,18 +43,12 @@ function obtenerClientes() {
           process.env.MP_ACCESS_TOKEN,
       });
 
-    preferenceClient =
-      new Preference(config);
-
     paymentClient = new Payment(
       config,
     );
   }
 
-  return {
-    preferenceClient,
-    paymentClient,
-  };
+  return { paymentClient };
 }
 
 /*
@@ -239,14 +231,88 @@ const crearPago = async (
 
   /*
    * =================================
-   * PREFERENCIA MERCADO PAGO
+   * ORDEN QR MERCADO PAGO
+   *
+   * El cliente paga escaneando el QR
+   * con su app, sin salir de la
+   * pantalla de suscripción.
    * =================================
    */
 
-  const frontendUrl = String(
-    process.env.FRONTEND_URL ||
-      "http://localhost:5173",
-  ).replace(/\/+$/, "");
+  const orden = await crearOrdenQr({
+    referencia: String(pagoId),
+    titulo: `Gesty - Suscripción (${mesesEntero} mes${
+      mesesEntero > 1 ? "es" : ""
+    })`,
+    monto,
+  });
+
+  await db.query(
+    `
+      UPDATE pagos_suscripcion
+
+      SET mp_preference_id = ?
+
+      WHERE id = ?
+    `,
+    [orden.orden_id, pagoId],
+  );
+
+  return {
+    pago_id: pagoId,
+    monto,
+    meses: mesesEntero,
+    qr_imagen: orden.qr_imagen,
+  };
+};
+
+/*
+ * =====================================
+ * ORDEN QR PARA REGISTRO
+ *
+ * Alta de empresa (referencia
+ * REG-XXXX): genera una orden en el
+ * QR dinámico de MP (API instore) y
+ * devuelve el qr_data listo para
+ * renderizar en nuestra propia
+ * pantalla de pago. El cliente paga
+ * escaneando con su app de MP.
+ *
+ * Requiere:
+ *   MP_COLLECTOR_ID    (id de usuario
+ *                       cobrador)
+ *   MP_POS_EXTERNAL_ID (caja/POS)
+ * =====================================
+ */
+
+const crearOrdenQr = async ({
+  referencia,
+  titulo,
+  monto,
+}) => {
+  const collectorId =
+    process.env.MP_COLLECTOR_ID;
+
+  const posExternalId =
+    process.env.MP_POS_EXTERNAL_ID;
+
+  const token =
+    process.env.MP_ACCESS_TOKEN;
+
+  if (
+    !collectorId ||
+    !posExternalId ||
+    !token
+  ) {
+    const error = new Error(
+      "El pago con QR no está configurado (faltan MP_COLLECTOR_ID / MP_POS_EXTERNAL_ID).",
+    );
+
+    error.code =
+      "MP_QR_NO_CONFIGURADO";
+
+    throw error;
+  }
 
   const apiUrl = String(
     process.env.API_PUBLIC_URL ||
@@ -254,39 +320,21 @@ const crearPago = async (
   ).replace(/\/+$/, "");
 
   const body = {
+    external_reference: referencia,
+    title: titulo,
+    description: titulo,
+    total_amount: monto,
     items: [
       {
-        id: "suscripcion-gesty",
-        title: `Gesty - Suscripción (${mesesEntero} mes${
-          mesesEntero > 1 ? "es" : ""
-        })`,
+        title: titulo,
+        description: titulo,
         quantity: 1,
         unit_price: monto,
-        currency_id: "ARS",
+        unit_measure: "unit",
+        total_amount: monto,
       },
     ],
-
-    external_reference:
-      String(pagoId),
   };
-
-  /*
-   * MP exige URL pública para las
-   * back_urls + auto_return: en
-   * localhost no las enviamos.
-   */
-
-  if (
-    !frontendUrl.includes("localhost")
-  ) {
-    body.back_urls = {
-      success: `${frontendUrl}/suscripcion?resultado=exito`,
-      pending: `${frontendUrl}/suscripcion?resultado=pendiente`,
-      failure: `${frontendUrl}/suscripcion?resultado=error`,
-    };
-
-    body.auto_return = "approved";
-  }
 
   /*
    * MP exige URL pública para el
@@ -299,101 +347,47 @@ const crearPago = async (
       `${apiUrl}/api/suscripcion/webhook`;
   }
 
-  const { preferenceClient } =
-    obtenerClientes();
-
-  const preferencia =
-    await preferenceClient.create({
-      body,
-    });
-
-  await db.query(
-    `
-      UPDATE pagos_suscripcion
-
-      SET mp_preference_id = ?
-
-      WHERE id = ?
-    `,
-    [preferencia.id, pagoId],
+  const respuesta = await fetch(
+    `https://api.mercadopago.com/instore/orders/qr/seller/collectors/${collectorId}/pos/${posExternalId}/qrs`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+        "Content-Type":
+          "application/json",
+      },
+      body: JSON.stringify(body),
+    },
   );
 
+  const datos = await respuesta.json();
+
+  if (!respuesta.ok) {
+    const error = new Error(
+      datos?.message ||
+        "Mercado Pago no pudo generar el QR.",
+    );
+
+    error.code = "MP_QR_ERROR";
+
+    throw error;
+  }
+
+  const QRCode = require("qrcode");
+
+  const qrImagen =
+    await QRCode.toDataURL(
+      datos.qr_data,
+      { width: 300, margin: 1 },
+    );
+
   return {
-    pago_id: pagoId,
-    monto,
-    meses: mesesEntero,
-    init_point:
-      preferencia.init_point,
-    sandbox_init_point:
-      preferencia.sandbox_init_point,
+    orden_id:
+      datos.in_store_order_id,
+    qr_data: datos.qr_data,
+    qr_imagen: qrImagen,
   };
-};
-
-/*
- * =====================================
- * PREFERENCIA PARA REGISTRO
- *
- * Igual que crearPago pero para el
- * alta de empresa: la referencia es
- * REG-XXXX y la vuelta va a
- * /registro/pago.
- * =====================================
- */
-
-const crearPreferenciaRegistro = async ({
-  referencia,
-  monto,
-  meses,
-}) => {
-  const frontendUrl = String(
-    process.env.FRONTEND_URL ||
-      "http://localhost:5173",
-  ).replace(/\/+$/, "");
-
-  const apiUrl = String(
-    process.env.API_PUBLIC_URL ||
-      "http://localhost:3001",
-  ).replace(/\/+$/, "");
-
-  const body = {
-    items: [
-      {
-        id: "registro-gesty",
-        title: `Gesty - Alta de empresa (${meses} mes${
-          meses > 1 ? "es" : ""
-        })`,
-        quantity: 1,
-        unit_price: monto,
-        currency_id: "ARS",
-      },
-    ],
-
-    external_reference: referencia,
-  };
-
-  if (
-    !frontendUrl.includes("localhost")
-  ) {
-    body.back_urls = {
-      success: `${frontendUrl}/registro/pago?resultado=exito`,
-      pending: `${frontendUrl}/registro/pago?resultado=pendiente`,
-      failure: `${frontendUrl}/registro/pago?resultado=error`,
-    };
-
-    body.auto_return = "approved";
-  }
-
-  if (!apiUrl.includes("localhost")) {
-    body.notification_url =
-      `${apiUrl}/api/suscripcion/webhook`;
-  }
-
-  const { preferenceClient } =
-    obtenerClientes();
-
-  return preferenceClient.create({
-    body,
-  });
 };
 
 /*
@@ -692,18 +686,32 @@ const procesarWebhook = async (
     req.query?.topic ??
     req.body?.type;
 
-  const paymentId =
+  const dataId =
     req.query?.["data.id"] ??
     req.query?.id ??
     req.body?.data?.id;
 
+  /*
+   * Pagos por QR notifican una
+   * merchant_order: traemos la orden
+   * y procesamos cada pago asociado.
+   */
+
+  if (
+    tipo === "merchant_order" &&
+    dataId
+  ) {
+    return procesarOrdenQr(
+      String(dataId),
+    );
+  }
+
   if (
     tipo !== "payment" ||
-    !paymentId
+    !dataId
   ) {
     /*
-     * Otros eventos (merchant_order,
-     * etc.) los ignoramos.
+     * Otros eventos los ignoramos.
      */
     return {
       procesado: false,
@@ -715,7 +723,7 @@ const procesarWebhook = async (
 
   const pagoMp =
     await paymentClient.get({
-      id: String(paymentId),
+      id: String(dataId),
     });
 
   const referencia = String(
@@ -761,10 +769,105 @@ const procesarWebhook = async (
   );
 };
 
+/*
+ * =====================================
+ * ORDEN QR (merchant_order)
+ *
+ * Los pagos hechos escaneando el QR
+ * llegan como notificación de orden,
+ * no de pago. Traemos la orden y
+ * procesamos cada pago aprobado.
+ * =====================================
+ */
+
+const procesarOrdenQr = async (
+  ordenId,
+) => {
+  const token =
+    process.env.MP_ACCESS_TOKEN;
+
+  const respuesta = await fetch(
+    `https://api.mercadopago.com/merchant_orders/${ordenId}`,
+    {
+      headers: {
+        Authorization:
+          `Bearer ${token}`,
+      },
+    },
+  );
+
+  const orden =
+    await respuesta.json();
+
+  if (!respuesta.ok) {
+    return {
+      procesado: false,
+    };
+  }
+
+  const resultados = [];
+
+  const { paymentClient } =
+    obtenerClientes();
+
+  for (const pago of orden.payments ??
+    []) {
+    const pagoMp =
+      await paymentClient.get({
+        id: String(pago.id),
+      });
+
+    const referencia = String(
+      pagoMp.external_reference ?? "",
+    );
+
+    if (
+      referencia.startsWith("REG-")
+    ) {
+      const registroService = require(
+        "./registroService",
+      );
+
+      resultados.push(
+        await registroService.confirmarRegistro(
+          referencia,
+          pagoMp.id,
+          pagoMp.status,
+          Number(
+            pagoMp.transaction_amount,
+          ),
+        ),
+      );
+    } else {
+      const pagoId =
+        Number(referencia);
+
+      if (pagoId) {
+        resultados.push(
+          await registrarPagoAprobado(
+            pagoId,
+            pagoMp.id,
+            pagoMp.status,
+            Number(
+              pagoMp.transaction_amount,
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  return {
+    procesado:
+      resultados.length > 0,
+  };
+};
+
 module.exports = {
   crearPago,
-  crearPreferenciaRegistro,
+  crearOrdenQr,
   procesarWebhook,
   verificarPagoPendiente,
   buscarPagoPorReferencia,
+  registrarPagoAprobado,
 };
