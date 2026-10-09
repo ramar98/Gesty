@@ -112,7 +112,10 @@ const {
 // APP
 // =======================
 
+// Railway termina la conexion publica en su proxy antes de llegar a Express.
+// Confiar en un solo salto permite limitar por IP sin confiar en toda la cadena.
 const app = express();
+app.set("trust proxy", 1);
 
 // =======================
 // SEGURIDAD
